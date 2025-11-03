@@ -73,3 +73,10 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# Ignore all Content except TeamShare & TopDown
+Content/*
+!Content/TeamShare/
+!Content/TeamShare/**
+!Content/TopDown/
+!Content/TopDown/**
