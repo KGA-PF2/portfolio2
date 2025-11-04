@@ -137,7 +137,7 @@ void ABattleManager::EndEnemyTurn()
 // ──────────────────────────────
 void ABattleManager::SpawnEnemiesForRound()
 {
-    if (!TestEnemyClass) return;
+    //if (!TestEnemyClass) return;
 
     int32 NumToSpawn = FMath::RandRange(2, 3);
     UE_LOG(LogTemp, Warning, TEXT("Round %d: Spawning %d new enemies..."), CurrentRound, NumToSpawn);
