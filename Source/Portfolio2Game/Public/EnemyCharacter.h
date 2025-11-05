@@ -37,6 +37,4 @@ public:
     UPROPERTY(BlueprintReadOnly, Category = "Battle")
     APlayerCharacter* PlayerRef;
 
-    UPROPERTY(BlueprintReadOnly, Category = "Battle")
-    ABattleManager* BattleManagerRef;
 };
