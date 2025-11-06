@@ -48,10 +48,10 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 	switch (MoveDirection)
 	{
-	case EGridDirection::Forward:
+	case EGridDirection::Up:
 		TargetCoord.Y--;
 		break;
-	case EGridDirection::Backward:
+	case EGridDirection::Down:
 		TargetCoord.Y++;
 		break;
 	case EGridDirection::Left:
@@ -74,7 +74,7 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	}
 
 	// 5. BattleManager에게 오프셋이 적용된 실제 월드 위치(TargetLocation) 요청
-	FVector TargetLocation = BattleManager->GetWorldLocation(TargetCoord, true); // true = IsPlayer
+	FVector TargetLocation = BattleManager->GetWorldLocation(TargetCoord); // true = IsPlayer
 
 	// 6. 캐릭터 내부 데이터(GridCoord) 즉시 업데이트
 	PlayerChar->GridCoord = TargetCoord;

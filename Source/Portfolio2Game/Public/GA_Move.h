@@ -24,7 +24,7 @@ public:
 
 	/**
 	 * (신규) 이 어빌리티가 담당할 이동 방향입니다.
-	 * (에디터에서 GA_Move_Forward, GA_Move_Backward 등 4개의 BP를 만들고 각각 설정)
+	 * (에디터에서 GA_Move_Up, GA_Move_Down 등 4개의 BP를 만들고 각각 설정)
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grid Movement")
 	EGridDirection MoveDirection;

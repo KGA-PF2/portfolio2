@@ -4,15 +4,18 @@
 #include "CharacterBase.h"
 #include "PlayerCharacter.generated.h"
 
-// ❌ BattleManager 전방 선언 제거 (부모 클래스인 CharacterBase가 이미 참조)
-// class ABattleManager;
+/** (신규) GAS 입력 바인딩을 위한 Enum 정의 */
+namespace PlayerAbilityInputID
+{
+	const int32 None = 0;
+	const int32 MoveUp = 1;
+	const int32 MoveDown = 2;
+	const int32 MoveLeft = 3;
+	const int32 MoveRight = 4;
+	const int32 ExecuteSkills = 5;
+	const int32 CancelSkills = 6;
+}
 
-/**
- * 턴제 전투용 플레이어 캐릭터 (GAS 입력 바인딩 담당)
- * - 턴 제어 (bCanAct)
- * - 턴 통신 (EndAction)
- * - (수정) 입력 컴포넌트에서 GAS 태그를 활성화
- */
 UCLASS()
 class PORTFOLIO2GAME_API APlayerCharacter : public ACharacterBase
 {
@@ -30,6 +33,18 @@ protected:
 	/** (신규) AbilitySystemComponent에 입력을 바인딩하기 위해 PossessedBy에서 호출됩니다. */
 	virtual void PossessedBy(AController* NewController) override;
 
+	// ──────────────────────────────
+	// (신규) 입력 바인딩 래퍼 함수
+	// ──────────────────────────────
+private:
+	void Input_MoveUp();
+	void Input_MoveDown();
+	void Input_MoveLeft();
+	void Input_MoveRight();
+	// (필요시)
+	// void Input_ExecuteSkills();
+	// void Input_CancelSkills();
+
 public:
 	// ──────────────────────────────
 	// 턴 제어
@@ -37,7 +52,6 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turn")
 	bool bCanAct = false; // 내 턴일 때만 입력 허용
 
-	
 
 	// ──────────────────────────────
 	// 행동 함수
@@ -48,5 +62,4 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Turn")
 	void EndAction(); // 행동 1회 끝났을 때
 
-	
 };

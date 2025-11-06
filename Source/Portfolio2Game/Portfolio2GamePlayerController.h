@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Portfolio2GamePlayerController.generated.h"
 
-/** Forward declaration to improve compiling times */
+/** Up declaration to improve compiling times */
 class UNiagaraSystem;
 class UInputMappingContext;
 class UInputAction;

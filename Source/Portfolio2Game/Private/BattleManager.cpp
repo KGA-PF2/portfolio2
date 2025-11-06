@@ -1,16 +1,16 @@
-﻿#include "BattleManager.h"
+﻿// (오류 수정) BattleManager.h가 항상 첫 번째 include여야 합니다.
+#include "BattleManager.h" 
 #include "PlayerCharacter.h"
 #include "EnemyCharacter.h"
-#include "CharacterBase.h"      // (중요!) GetWorldLocationForCharacter를 위해 포함
-#include "GridDataInterface.h"  // (중요!) 인터페이스 헤더 포함
+#include "CharacterBase.h"      // GetCharacterAt, GetWorldLocationForCharacter를 위해 포함
+#include "GridDataInterface.h"  // 인터페이스 헤더 포함
 #include "Kismet/GameplayStatics.h"
 
 ABattleManager::ABattleManager()
 {
 	PrimaryActorTick.bCanEverTick = false;
-
-	// 홀수열(적 칸) 등록
-	EnemySpawnColumns = { 1, 3, 5, 7, 9, 11, 13 };
+	// (수정) 7x5 그리드에 맞게 스폰 위치 재조정 (예: 5, 6열)
+	EnemySpawnColumns = { 5, 6 };
 }
 
 void ABattleManager::BeginPlay()
@@ -24,17 +24,17 @@ void ABattleManager::BeginPlay()
 // ──────────────────────────────
 void ABattleManager::BeginBattle()
 {
-	// 1. (수정) 에디터에서 GridActorRef가 연결되었는지 확인합니다.
+	// 1. (수정) 에디터에서 GridActorRef가 연결되었는지 확인
 	if (!GridActorRef)
 	{
-		UE_LOG(LogTemp, Error, TEXT("BattleManager: 'GridActorRef'가 맵에서 연결되지 않았습니다! 디테일 패널에서 BP_GroundGrid를 연결하세요."));
-		return; // 그리드 없이는 진행 불가
+		UE_LOG(LogTemp, Error, TEXT("BattleManager: 'GridActorRef'가 맵에서 연결되지 않았습니다! 디테일 패널에서 BP_GridISM을 연결하세요."));
+		return;
 	}
 
-	// 2. (수정) 연결된 액터가 'GridDataInterface'를 구현했는지 확인합니다.
+	// 2. (수정) 연결된 액터가 'GridDataInterface'를 구현했는지 확인
 	if (!GridActorRef->Implements<UGridDataInterface>())
 	{
-		UE_LOG(LogTemp, Error, TEXT("BattleManager: 'GridActorRef'(%s)가 'IGridDataInterface'를 구현하지 않았습니다! BP_GroundGrid의 클래스 세팅을 확인하세요."), *GridActorRef->GetName());
+		UE_LOG(LogTemp, Error, TEXT("BattleManager: 'GridActorRef'(%s)가 'IGridDataInterface'를 구현하지 않았습니다! BP_GridISM의 클래스 세팅을 확인하세요."), *GridActorRef->GetName());
 		return;
 	}
 
@@ -43,31 +43,24 @@ void ABattleManager::BeginBattle()
 	TurnsSinceSingleEnemy = 0;
 
 	UE_LOG(LogTemp, Warning, TEXT("=== Battle Begin ==="));
-
-	// 플레이어 스폰
 	SpawnPlayer();
-
-	// 첫 라운드 시작
 	StartRound();
 }
 
 // ──────────────────────────────
-// 플레이어 스폰
+// 플레이어 스폰 (7x5 중앙)
 // ──────────────────────────────
 void ABattleManager::SpawnPlayer()
 {
-	if (!PlayerClass || !GridActorRef) return; // GridActorRef 유효성 검사
+	if (!PlayerClass || !GridActorRef) return;
 
-	// (수정) 인터페이스를 통해 BP_GroundGrid의 데이터를 가져옵니다.
-	const int32 GridHeight = IGridDataInterface::Execute_GetGridHeight(GridActorRef);
-	const int32 GridWidth = IGridDataInterface::Execute_GetGridWidth(GridActorRef);
+	// (수정) 7x5 중앙 좌표 계산 (가정: 7x5)
+	const int32 CenterRow = IGridDataInterface::Execute_GetGridHeight(GridActorRef) / 2; // 5 -> 2
+	const int32 CenterCol = IGridDataInterface::Execute_GetGridWidth(GridActorRef) / 2;  // 7 -> 3
+	FIntPoint SpawnGridPos(CenterCol, CenterRow); // (3, 2)
 
-	const int32 CenterRow = GridHeight / 2;
-	const int32 CenterCol = (GridWidth / 2) - 1;
-	FIntPoint SpawnGridPos(CenterCol, CenterRow);
-
-	// (수정) GetWorldLocation 함수로 오프셋이 적용된 위치를 가져옵니다. (bIsPlayer = true)
-	FVector SpawnLoc = GetWorldLocation(SpawnGridPos, true);
+	// (수정) GetWorldLocation (오프셋 없는 중앙 위치)
+	FVector SpawnLoc = GetWorldLocation(SpawnGridPos);
 	FRotator SpawnRot = FRotator::ZeroRotator;
 
 	PlayerCharacter = GetWorld()->SpawnActor<APlayerCharacter>(PlayerClass, SpawnLoc, SpawnRot);
@@ -82,7 +75,7 @@ void ABattleManager::SpawnPlayer()
 }
 
 // ──────────────────────────────
-// 라운드 시작/종료 (기존과 동일)
+// 턴 관리 (기존과 동일)
 // ──────────────────────────────
 void ABattleManager::StartRound()
 {
@@ -98,9 +91,6 @@ void ABattleManager::EndRound()
 	UE_LOG(LogTemp, Warning, TEXT("=== ROUND %d END ==="), CurrentRound);
 }
 
-// ──────────────────────────────
-// 턴 관리 (기존과 동일)
-// ──────────────────────────────
 void ABattleManager::StartPlayerTurn()
 {
 	CurrentState = EBattleState::PlayerTurn;
@@ -123,6 +113,7 @@ void ABattleManager::StartEnemyTurn()
 	{
 		if (!Enemy || Enemy->bDead) continue;
 		UE_LOG(LogTemp, Warning, TEXT("%s attacks!"), *Enemy->GetName());
+		// (참고) EnemyAI 로직은 EnemyCharacter.cpp에 있어야 함
 	}
 	EndEnemyTurn();
 }
@@ -141,22 +132,28 @@ void ABattleManager::EndEnemyTurn()
 // ──────────────────────────────
 void ABattleManager::SpawnEnemiesForRound()
 {
-	if (!TestEnemyClass || !GridActorRef) return; // GridActorRef 유효성 검사
+	if (!TestEnemyClass || !GridActorRef) return;
 
 	int32 NumToSpawn = FMath::RandRange(2, 3);
-	UE_LOG(LogTemp, Warning, TEXT("Round %d: Spawning %d new enemies..."), CurrentRound, NumToSpawn);
-
-	// (수정) 인터페이스를 통해 BP_GroundGrid의 데이터를 가져옵니다.
 	const int32 GridHeight = IGridDataInterface::Execute_GetGridHeight(GridActorRef);
+	const int32 GridWidth = IGridDataInterface::Execute_GetGridWidth(GridActorRef);
 
 	for (int32 i = 0; i < NumToSpawn; ++i)
 	{
+		// 7x5 그리드에 맞게 스폰 위치 재조정 (예: 5, 6열)
 		int32 Column = EnemySpawnColumns[FMath::RandRange(0, EnemySpawnColumns.Num() - 1)];
-		int32 Row = FMath::RandRange(0, GridHeight - 1); // BP_GroundGrid의 GridHeight 사용
+		int32 Row = FMath::RandRange(0, GridHeight - 1); // 0~4
 		FIntPoint SpawnGridPos(Column, Row);
 
-		// (수정) GetWorldLocation 함수로 오프셋이 적용된 위치를 가져옵니다. (bIsPlayer = false)
-		FVector SpawnLoc = GetWorldLocation(SpawnGridPos, false);
+		// (수정) 스폰하려는 위치가 비어있는지 확인 (겹치기 방지)
+		if (GetCharacterAt(SpawnGridPos) != nullptr)
+		{
+			i--; // 재시도
+			continue;
+		}
+
+		// (수정) GetWorldLocation (오프셋 없는 중앙 위치)
+		FVector SpawnLoc = GetWorldLocation(SpawnGridPos);
 		AEnemyCharacter* Enemy = GetWorld()->SpawnActor<AEnemyCharacter>(TestEnemyClass, SpawnLoc, FRotator::ZeroRotator);
 
 		if (Enemy)
@@ -175,70 +172,83 @@ FVector ABattleManager::GridToWorld(FIntPoint GridPos) const
 {
 	if (!GridActorRef) return FVector::ZeroVector;
 
-	// (수정) BP_GroundGrid의 GridSizeX/Y 변수를 인터페이스로 가져옵니다.
 	const double SizeX = IGridDataInterface::Execute_GetGridSizeX(GridActorRef);
 	const double SizeY = IGridDataInterface::Execute_GetGridSizeY(GridActorRef);
 
-	// BP_GridISM의 생성 로직(X*SizeX, Y*SizeY)을 반영합니다.
 	return FVector(GridPos.X * SizeX, GridPos.Y * SizeY, 0.f);
 }
 
 // ──────────────────────────────
-// (신규) 오프셋 적용된 월드 위치
+// (수정됨) 중앙 월드 위치
 // ──────────────────────────────
-FVector ABattleManager::GetWorldLocation(FIntPoint GridPos, bool bIsPlayer) const
+FVector ABattleManager::GetWorldLocation(FIntPoint GridPos) const
 {
 	if (!GridActorRef) return FVector::ZeroVector;
 
-	// 1. 셀 중심 위치를 가져옵니다.
-	FVector CellCenter = GridToWorld(GridPos);
-
-	// 2. (수정) 인터페이스를 통해 BP_GroundGrid의 오프셋 변수 값을 가져옵니다.
-	const double Offset = bIsPlayer
-		? IGridDataInterface::Execute_GetPlayerCellOffsetX(GridActorRef)
-		: IGridDataInterface::Execute_GetEnemyCellOffsetX(GridActorRef);
-
-	// (가정) X축이 좌/우 오프셋 축이라고 가정합니다.
-	CellCenter.X += Offset;
-
-	return CellCenter;
+	// (수정) 오프셋 로직 제거. 무조건 중앙 위치 반환.
+	return GridToWorld(GridPos);
 }
 
 // ──────────────────────────────
-// (신규) 캐릭터용 헬퍼 함수
+// (수정됨) 캐릭터용 헬퍼 함수
 // ──────────────────────────────
 FVector ABattleManager::GetWorldLocationForCharacter(ACharacterBase* Character) const
 {
 	if (!Character) return FVector::ZeroVector;
 
-	// 캐릭터가 APlayerCharacter 클래스인지 확인
-	const bool bIsPlayer = Character->IsA(APlayerCharacter::StaticClass());
-
-	// 캐릭터의 GridCoord와 bIsPlayer 여부를 바탕으로 최종 위치 계산
-	return GetWorldLocation(Character->GridCoord, bIsPlayer);
+	// (수정) GetWorldLocation에 bool 인수가 필요 없어짐
+	return GetWorldLocation(Character->GridCoord);
 }
 
 // ──────────────────────────────
-// (신규) 좌표 <-> 인덱스 변환 유틸리티
+// (수정됨) 좌표 <-> 인덱스 변환 유틸리티
 // ──────────────────────────────
 int32 ABattleManager::GetGridIndexFromCoord(FIntPoint Coord) const
 {
-	// (수정) C++이 계산하는 대신, BP_GroundGrid에게 인터페이스로 물어봅니다.
-	if (!GridActorRef || !GridActorRef->Implements<UGridDataInterface>())
-	{
-		return -1;
-	}
+	if (!GridActorRef || !GridActorRef->Implements<UGridDataInterface>()) return -1;
 	return IGridDataInterface::Execute_GetGridIndexFromCoord(GridActorRef, Coord);
 }
 
 FIntPoint ABattleManager::GetGridCoordFromIndex(int32 Index) const
 {
-	// (수정) C++이 계산하는 대신, BP_GroundGrid에게 인터페이스로 물어봅니다.
+	if (!GridActorRef || !GridActorRef->Implements<UGridDataInterface>()) return FIntPoint::ZeroValue;
+	return IGridDataInterface::Execute_GetGridCoordFromIndex(GridActorRef, Index);
+}
+
+// ──────────────────────────────
+// (신규) 겹치기 및 경계 검사 유틸리티
+// ──────────────────────────────
+bool ABattleManager::IsValidGridCoord(FIntPoint Coord) const
+{
 	if (!GridActorRef || !GridActorRef->Implements<UGridDataInterface>())
 	{
-		return FIntPoint::ZeroValue;
+		return false;
 	}
-	return IGridDataInterface::Execute_GetGridCoordFromIndex(GridActorRef, Index);
+
+	const int32 GridWidth = IGridDataInterface::Execute_GetGridWidth(GridActorRef);
+	const int32 GridHeight = IGridDataInterface::Execute_GetGridHeight(GridActorRef);
+
+	return (Coord.X >= 0 && Coord.X < GridWidth && Coord.Y >= 0 && Coord.Y < GridHeight);
+}
+
+ACharacterBase* ABattleManager::GetCharacterAt(FIntPoint Coord) const
+{
+	// 1. 플레이어 확인
+	if (PlayerCharacter && !PlayerCharacter->bDead && PlayerCharacter->GridCoord == Coord)
+	{
+		return PlayerCharacter;
+	}
+
+	// 2. 적 배열 확인
+	for (AEnemyCharacter* Enemy : Enemies)
+	{
+		if (Enemy && !Enemy->bDead && Enemy->GridCoord == Coord)
+		{
+			return Enemy;
+		}
+	}
+
+	return nullptr; // 해당 위치에 아무도 없음
 }
 
 

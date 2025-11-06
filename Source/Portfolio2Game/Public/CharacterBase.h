@@ -11,15 +11,15 @@ class ABattleManager; // (신규) BattleManager 전방 선언
 
 /**
  * (신규) GA_Move에서 사용할 이동 방향 Enum.
- * GA_Move가 이 헤더를 include하여 사용합니다.
+ * GA_Move.h 파일에서도 이 Enum을 사용하게 됩니다.
  */
 UENUM(BlueprintType)
 enum class EGridDirection : uint8
 {
-	Forward,
-	Backward,
-	Left,
-	Right
+	Up,	// W (Y-)
+	Down,	// S (Y+)
+	Left,		// A (X-)
+	Right		// D (X+)
 };
 
 UCLASS()
@@ -28,13 +28,12 @@ class PORTFOLIO2GAME_API ACharacterBase : public ACharacter, public IAbilitySyst
 	GENERATED_BODY()
 
 public:
-	ACharacterBase(); // 생성자
+	ACharacterBase();
 
 protected:
 	virtual void BeginPlay() override;
 
-	// ❌ Tick을 이용한 이동 로직을 사용하지 않으므로 Tick 관련 선언은 제거합니다.
-	// virtual void Tick(float DeltaTime) override;
+	// ❌ Tick 기반 이동 로직을 사용하지 않으므로 Tick 관련 선언은 제거합니다.
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
 	UAbilitySystemComponent* AbilitySystem;
@@ -45,15 +44,32 @@ protected:
 public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override { return AbilitySystem; }
 
-	// ───────── 스킬 “보유 목록” (기존과 동일) ─────────
+	// ───────── 스킬 “보유 목록” ─────────
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skills")
 	TArray<TSubclassOf<class UGameplayAbility>> SkillList;
+
+	/** (신규) WASD 이동에 사용할 어빌리티 클래스 (에디터에서 할당) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skills|Movement")
+	TSubclassOf<class UGameplayAbility> MoveAbility_Up;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skills|Movement")
+	TSubclassOf<class UGameplayAbility> MoveAbility_Down;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skills|Movement")
+	TSubclassOf<class UGameplayAbility> MoveAbility_Left;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skills|Movement")
+	TSubclassOf<class UGameplayAbility> MoveAbility_Right;
 
 	UPROPERTY()
 	TArray<FGameplayAbilitySpecHandle> GrantedSkillHandles;
 
 	UFUNCTION(BlueprintCallable, Category = "Skills")
 	void GiveAllSkills();
+
+	/** (신규) 이동 어빌리티를 ASC에 부여하는 함수 */
+	UFUNCTION(BlueprintCallable, Category = "Skills")
+	void GiveMoveAbilities();
 
 	// ───────── 스킬 “예약/실행” 큐 (기존과 동일) ─────────
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill Queue")
@@ -71,7 +87,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Skills")
 	void CancelSkillQueue();
 
-	// ───────── 이동/회전 (기존 함수 유지) ─────────
+	// ───────── 이동/회전 (수정됨) ─────────
 	/**
 	 * (수정됨) 이 함수는 이제 단순히 데이터(GridCoord)만 업데이트합니다.
 	 * 실제 월드 이동은 GA_Move 어빌리티가 담당합니다.
@@ -89,11 +105,10 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Move")
 	void PlayMoveAnim();
 
-	// ❌ OnMovementFinished (이동 완료 콜백)은 GA_Move가 직접 처리하므로 제거합니다.
-	// virtual void OnMovementFinished();
+	// ❌ Tick 기반 이동 관련 로직(OnMovementFinished) 제거
 
 	// ───────── 상태 ─────────
-public: // 자식 클래스 및 BattleManager에서 접근할 수 있도록 public/protected로 변경
+public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid")
 	FIntPoint GridCoord = FIntPoint::ZeroValue;
 
@@ -103,17 +118,14 @@ public: // 자식 클래스 및 BattleManager에서 접근할 수 있도록 publ
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Status")
 	bool bDead = false;
 
-	/** (신규) BattleManager에게 물어봐서 1D 인덱스를 가져옵니다. (요구사항 3) */
+	/** (신규) BattleManager에게 물어봐서 1D 인덱스를 가져옵니다. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Grid")
 	int32 GetGridIndex() const;
 
 protected:
-	// ❌ 부드러운 이동(Tick)에 필요했던 변수들 제거
-	// bool bIsMoving = false;
-	// FVector MoveTargetLocation;
-	// float MoveSpeed = 600.f;
+	// ❌ Tick 기반 이동 관련 변수(bIsMoving 등) 제거
 
-	/** (신규) 모든 캐릭터가 BattleManager를 참조합니다. (GA_Move가 이 참조를 사용) */
+	/** (신규) 모든 캐릭터가 BattleManager를 참조합니다. */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Battle")
 	ABattleManager* BattleManagerRef;
 

@@ -29,7 +29,7 @@ public:
     void AttackNearestPlayer();
 
     UFUNCTION(BlueprintCallable, Category = "AI")
-    void MoveForward();
+    void MoveUp();
 
     // ──────────────────────────────
     // 참조
