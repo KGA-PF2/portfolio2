@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Portfolio2GamePlayerController.h
 
 #pragma once
 
@@ -7,7 +7,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Portfolio2GamePlayerController.generated.h"
 
-/** Up declaration to improve compiling times */
+/** Forward declaration to improve compiling times */
 class UNiagaraSystem;
 class UInputMappingContext;
 class UInputAction;
@@ -22,47 +22,30 @@ class APortfolio2GamePlayerController : public APlayerController
 public:
 	APortfolio2GamePlayerController();
 
-	/** Time Threshold to know if it was a short press */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
-	float ShortPressThreshold;
+	// ❌ (제거) ShortPressThreshold
 
-	/** FX Class that we will spawn when clicking */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
-	UNiagaraSystem* FXCursor;
+	// ❌ (제거) FXCursor
 
-	/** MappingContext */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
-	UInputMappingContext* DefaultMappingContext;
-	
-	/** Jump Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
-	UInputAction* SetDestinationClickAction;
+	/** * (유지) BP_TestPlayerController가 카메라/하이라이트용으로 사용할 기본 매핑 컨텍스트
+	 * (BP_TestPlayerController의 클래스 디폴트에서 할당됨)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputMappingContext> DefaultMappingContext;
 
-	/** Jump Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
-	UInputAction* SetDestinationTouchAction;
+	// ❌ (제거) SetDestinationClickAction
+
+	// ❌ (제거) SetDestinationTouchAction
 
 protected:
-	/** True if the controlled character should navigate to the mouse cursor. */
-	uint32 bMoveToMouseCursor : 1;
+	// ❌ (제거) bMoveToMouseCursor
 
 	virtual void SetupInputComponent() override;
-	
-	// To add mapping context
-	virtual void BeginPlay();
 
-	/** Input handlers for SetDestination action. */
-	void OnInputStarted();
-	void OnSetDestinationTriggered();
-	void OnSetDestinationReleased();
-	void OnTouchTriggered();
-	void OnTouchReleased();
+	// (유지) 기본 매핑 컨텍스트를 추가하기 위해 BeginPlay는 남겨둡니다.
+	virtual void BeginPlay() override;
+
+	// ❌ (제거) OnInputStarted 및 모든 SetDestination/Touch 관련 함수 선언
 
 private:
-	FVector CachedDestination;
-
-	bool bIsTouch; // Is it a touch device
-	float FollowTime; // For how long it has been pressed
+	// ❌ (제거) CachedDestination, bIsTouch, FollowTime
 };
-
-

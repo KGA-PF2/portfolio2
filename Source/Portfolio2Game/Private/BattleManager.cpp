@@ -1,21 +1,45 @@
-﻿// (오류 수정) BattleManager.h가 항상 첫 번째 include여야 합니다.
+﻿// BattleManager.cpp
+
 #include "BattleManager.h" 
 #include "PlayerCharacter.h"
 #include "EnemyCharacter.h"
-#include "CharacterBase.h"      // GetCharacterAt, GetWorldLocationForCharacter를 위해 포함
-#include "GridDataInterface.h"  // 인터페이스 헤더 포함
+#include "CharacterBase.h"      
+#include "GridDataInterface.h"  // (필수) 인터페이스 헤더 포함
 #include "Kismet/GameplayStatics.h"
 
 ABattleManager::ABattleManager()
 {
 	PrimaryActorTick.bCanEverTick = false;
-	// (수정) 7x5 그리드에 맞게 스폰 위치 재조정 (예: 5, 6열)
-	EnemySpawnColumns = { 5, 6 };
+
+	// (신규) 7x5 (WxH) 세로 우선 인덱스 기본값
+	// (X=5, Y=0~4) -> 5*5+0 = 25 ~ 5*5+4 = 29
+	// (X=6, Y=0~4) -> 6*5+0 = 30 ~ 6*5+4 = 34
+	EnemySpawnIndices = { 25, 26, 27, 28, 29, 30, 31, 32, 33, 34 };
+	PlayerSpawnIndex = 10; // (X=2, Y=0) -> 2*5+0 = 10
 }
 
 void ABattleManager::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// 1. (신규) GridActorRef 유효성 검사 및 인터페이스 캐시
+	if (!GridActorRef)
+	{
+		UE_LOG(LogTemp, Error, TEXT("BattleManager: 'GridActorRef'가 맵에서 연결되지 않았습니다! 디테일 패널에서 BP_GridISM을 연결하세요."));
+		return;
+	}
+
+	// GridDataInterface를 구현했는지 확인하고 캐시
+	GridInterface.SetObject(GridActorRef);
+	GridInterface.SetInterface(Cast<IGridDataInterface>(GridActorRef));
+
+	if (!GridInterface)
+	{
+		UE_LOG(LogTemp, Error, TEXT("BattleManager: GridActorRef(%s)가 GridDataInterface를 구현하지 않았습니다! BP_GridISM 클래스 세팅에서 인터페이스를 추가하세요."), *GridActorRef->GetName());
+		return;
+	}
+
+	// 2. 전투 시작
 	BeginBattle();
 }
 
@@ -24,17 +48,9 @@ void ABattleManager::BeginPlay()
 // ──────────────────────────────
 void ABattleManager::BeginBattle()
 {
-	// 1. (수정) 에디터에서 GridActorRef가 연결되었는지 확인
-	if (!GridActorRef)
+	if (!GridInterface)
 	{
-		UE_LOG(LogTemp, Error, TEXT("BattleManager: 'GridActorRef'가 맵에서 연결되지 않았습니다! 디테일 패널에서 BP_GridISM을 연결하세요."));
-		return;
-	}
-
-	// 2. (수정) 연결된 액터가 'GridDataInterface'를 구현했는지 확인
-	if (!GridActorRef->Implements<UGridDataInterface>())
-	{
-		UE_LOG(LogTemp, Error, TEXT("BattleManager: 'GridActorRef'(%s)가 'IGridDataInterface'를 구현하지 않았습니다! BP_GridISM의 클래스 세팅을 확인하세요."), *GridActorRef->GetName());
+		UE_LOG(LogTemp, Error, TEXT("BattleManager: GridInterface가 유효하지 않아 BeginBattle을 중단합니다."));
 		return;
 	}
 
@@ -42,201 +58,221 @@ void ABattleManager::BeginBattle()
 	TurnCount = 0;
 	TurnsSinceSingleEnemy = 0;
 
-	UE_LOG(LogTemp, Warning, TEXT("=== Battle Begin ==="));
 	SpawnPlayer();
-	StartRound();
+	SpawnEnemiesForRound(); // 첫 라운드 스폰
+
+	if (PlayerRef)
+	{
+		CurrentState = EBattleState::PlayerTurn;
+		PlayerRef->StartAction();
+	}
+	else
+	{
+		CurrentState = EBattleState::None;
+	}
 }
 
-// ──────────────────────────────
-// 플레이어 스폰 (7x5 중앙)
-// ──────────────────────────────
-void ABattleManager::SpawnPlayer()
+void ABattleManager::EndBattle(bool bPlayerVictory)
 {
-	if (!PlayerClass || !GridActorRef) return;
-
-	// (수정) 7x5 중앙 좌표 계산 (가정: 7x5)
-	const int32 CenterRow = IGridDataInterface::Execute_GetGridHeight(GridActorRef) / 2; // 5 -> 2
-	const int32 CenterCol = IGridDataInterface::Execute_GetGridWidth(GridActorRef) / 2;  // 7 -> 3
-	FIntPoint SpawnGridPos(CenterCol, CenterRow); // (3, 2)
-
-	// (수정) GetWorldLocation (오프셋 없는 중앙 위치)
-	FVector SpawnLoc = GetWorldLocation(SpawnGridPos);
-	FRotator SpawnRot = FRotator::ZeroRotator;
-
-	PlayerCharacter = GetWorld()->SpawnActor<APlayerCharacter>(PlayerClass, SpawnLoc, SpawnRot);
-	if (PlayerCharacter)
+	if (bPlayerVictory)
 	{
-		PlayerCharacter->GridCoord = SpawnGridPos;
-		PlayerCharacter->bFacingRight = true;
-		PlayerCharacter->InitAttributes();
-
-		UE_LOG(LogTemp, Warning, TEXT("Player spawned at (%d,%d)"), CenterCol, CenterRow);
+		CurrentState = EBattleState::Victory;
+		UE_LOG(LogTemp, Warning, TEXT("BATTLE VICTORY"));
+	}
+	else
+	{
+		CurrentState = EBattleState::Defeat;
+		UE_LOG(LogTemp, Warning, TEXT("BATTLE DEFEAT"));
 	}
 }
 
 // ──────────────────────────────
-// 턴 관리 (기존과 동일)
+// 라운드/턴 흐름
 // ──────────────────────────────
 void ABattleManager::StartRound()
 {
 	CurrentRound++;
+	TurnCount = 0;
 	TurnsSinceSingleEnemy = 0;
-	UE_LOG(LogTemp, Warning, TEXT("=== ROUND %d START ==="), CurrentRound);
+	UE_LOG(LogTemp, Warning, TEXT("ROUND %d START"), CurrentRound);
 	SpawnEnemiesForRound();
-	StartPlayerTurn();
+
+	CurrentState = EBattleState::PlayerTurn;
+	if (PlayerRef)
+	{
+		PlayerRef->StartAction();
+	}
 }
 
 void ABattleManager::EndRound()
 {
-	UE_LOG(LogTemp, Warning, TEXT("=== ROUND %d END ==="), CurrentRound);
+	UE_LOG(LogTemp, Warning, TEXT("ROUND %d END"), CurrentRound);
+	for (AEnemyCharacter* Enemy : Enemies)
+	{
+		if (Enemy) Enemy->Destroy();
+	}
+	Enemies.Empty();
 }
 
 void ABattleManager::StartPlayerTurn()
 {
-	CurrentState = EBattleState::PlayerTurn;
 	TurnCount++;
-	UE_LOG(LogTemp, Warning, TEXT("Player Turn %d"), TurnCount);
-	if (PlayerCharacter)
-		PlayerCharacter->EnableAction(true);
-}
-
-void ABattleManager::EndPlayerTurn()
-{
-	CurrentState = EBattleState::EnemyTurn;
-	StartEnemyTurn();
+	UE_LOG(LogTemp, Warning, TEXT("TURN %d: PLAYER TURN"), TurnCount);
+	CurrentState = EBattleState::PlayerTurn;
+	if (PlayerRef)
+	{
+		PlayerRef->StartAction();
+	}
 }
 
 void ABattleManager::StartEnemyTurn()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Enemy Turn Start"));
+	UE_LOG(LogTemp, Warning, TEXT("TURN %d: ENEMY TURN"), TurnCount);
+	CurrentState = EBattleState::EnemyTurn;
+	ExecuteEnemyActions();
+	CheckSingleEnemyTimer();
+}
+
+void ABattleManager::EndCharacterTurn(ACharacterBase* Character)
+{
+	CheckBattleResult();
+	if (CurrentState == EBattleState::Victory || CurrentState == EBattleState::Defeat)
+	{
+		return;
+	}
+
+	if (Cast<APlayerCharacter>(Character))
+	{
+		StartEnemyTurn();
+	}
+	else
+	{
+		StartPlayerTurn();
+	}
+}
+
+void ABattleManager::ExecuteEnemyActions()
+{
 	for (AEnemyCharacter* Enemy : Enemies)
 	{
-		if (!Enemy || Enemy->bDead) continue;
-		UE_LOG(LogTemp, Warning, TEXT("%s attacks!"), *Enemy->GetName());
-		// (참고) EnemyAI 로직은 EnemyCharacter.cpp에 있어야 함
+		if (Enemy && !Enemy->bDead)
+		{
+			Enemy->ExecuteAIAction();
+		}
 	}
-	EndEnemyTurn();
+	EndCharacterTurn(nullptr); // 적 턴 일괄 종료
 }
 
-void ABattleManager::EndEnemyTurn()
+// ──────────────────────────────
+// 스폰 관련 (인덱스 기반으로 수정됨)
+// ──────────────────────────────
+
+void ABattleManager::SpawnPlayer()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Enemy Turn End"));
-	CheckSingleEnemyTimer();
-	CheckBattleResult();
-	if (CurrentState != EBattleState::Victory && CurrentState != EBattleState::Defeat)
-		StartPlayerTurn();
+	if (!PlayerClass || !GridInterface) return;
+
+	if (PlayerRef) PlayerRef->Destroy(); // 기존 플레이어 제거
+
+	// 1. (수정) 인덱스(칸 번호)로부터 FIntPoint 좌표 획득
+	FIntPoint SpawnCoord = GetGridCoordFromIndex(PlayerSpawnIndex);
+
+	// 2. 좌표로 월드 위치 획득
+	FVector SpawnLocation = GetWorldLocation(SpawnCoord);
+
+	// 3. 스폰
+	PlayerRef = GetWorld()->SpawnActor<APlayerCharacter>(PlayerClass, SpawnLocation, FRotator::ZeroRotator);
+	if (PlayerRef)
+	{
+		// 4. (중요) 캐릭터의 논리적 위치(좌표와 인덱스) 둘 다 설정
+		PlayerRef->GridCoord = SpawnCoord;
+		PlayerRef->GridIndex = PlayerSpawnIndex;
+	}
 }
 
-// ──────────────────────────────
-// 적 스폰
-// ──────────────────────────────
 void ABattleManager::SpawnEnemiesForRound()
 {
-	if (!TestEnemyClass || !GridActorRef) return;
+	if (!EnemyClass || !GridInterface) return;
 
-	int32 NumToSpawn = FMath::RandRange(2, 3);
-	const int32 GridHeight = IGridDataInterface::Execute_GetGridHeight(GridActorRef);
-	const int32 GridWidth = IGridDataInterface::Execute_GetGridWidth(GridActorRef);
-
-	for (int32 i = 0; i < NumToSpawn; ++i)
+	// 기존 적 제거
+	for (AEnemyCharacter* Enemy : Enemies)
 	{
-		// 7x5 그리드에 맞게 스폰 위치 재조정 (예: 5, 6열)
-		int32 Column = EnemySpawnColumns[FMath::RandRange(0, EnemySpawnColumns.Num() - 1)];
-		int32 Row = FMath::RandRange(0, GridHeight - 1); // 0~4
-		FIntPoint SpawnGridPos(Column, Row);
+		if (Enemy) Enemy->Destroy();
+	}
+	Enemies.Empty();
 
-		// (수정) 스폰하려는 위치가 비어있는지 확인 (겹치기 방지)
-		if (GetCharacterAt(SpawnGridPos) != nullptr)
+	// (수정) EnemySpawnIndices 배열 사용
+	for (const int32 SpawnIndex : EnemySpawnIndices)
+	{
+		// 1. 인덱스 -> 좌표
+		FIntPoint SpawnCoord = GetGridCoordFromIndex(SpawnIndex);
+
+		// 2. 좌표 -> 월드 위치
+		FVector SpawnLocation = GetWorldLocation(SpawnCoord);
+
+		// 3. 스폰
+		AEnemyCharacter* NewEnemy = GetWorld()->SpawnActor<AEnemyCharacter>(EnemyClass, SpawnLocation, FRotator::ZeroRotator);
+		if (NewEnemy)
 		{
-			i--; // 재시도
-			continue;
-		}
-
-		// (수정) GetWorldLocation (오프셋 없는 중앙 위치)
-		FVector SpawnLoc = GetWorldLocation(SpawnGridPos);
-		AEnemyCharacter* Enemy = GetWorld()->SpawnActor<AEnemyCharacter>(TestEnemyClass, SpawnLoc, FRotator::ZeroRotator);
-
-		if (Enemy)
-		{
-			Enemy->GridCoord = SpawnGridPos;
-			Enemies.Add(Enemy);
-			UE_LOG(LogTemp, Warning, TEXT("Spawned Enemy at (%d,%d)"), Column, Row);
+			// 4. (중요) 논리적 위치(좌표와 인덱스) 둘 다 설정
+			NewEnemy->GridCoord = SpawnCoord;
+			NewEnemy->GridIndex = SpawnIndex;
+			Enemies.Add(NewEnemy);
 		}
 	}
 }
 
 // ──────────────────────────────
-// 격자 좌표 → 월드 변환 (셀 중심)
+// 유틸리티 (수정됨)
 // ──────────────────────────────
+
 FVector ABattleManager::GridToWorld(FIntPoint GridPos) const
 {
-	if (!GridActorRef) return FVector::ZeroVector;
+	if (!GridInterface) return FVector::ZeroVector;
 
+	// BP_GridISM의 변수(사이즈)를 인터페이스를 통해 가져옴
 	const double SizeX = IGridDataInterface::Execute_GetGridSizeX(GridActorRef);
 	const double SizeY = IGridDataInterface::Execute_GetGridSizeY(GridActorRef);
 
 	return FVector(GridPos.X * SizeX, GridPos.Y * SizeY, 0.f);
 }
 
-// ──────────────────────────────
-// (수정됨) 중앙 월드 위치
-// ──────────────────────────────
 FVector ABattleManager::GetWorldLocation(FIntPoint GridPos) const
 {
-	if (!GridActorRef) return FVector::ZeroVector;
+	if (!GridInterface) return FVector::ZeroVector;
 
-	// (수정) 오프셋 로직 제거. 무조건 중앙 위치 반환.
-	return GridToWorld(GridPos);
+	// (오류 수정) BP_GridISM의 GridLocationOffset을 사용합니다.
+	const FVector ActorOffset = IGridDataInterface::Execute_GetGridLocationOffset(GridActorRef);
+	const FVector CellWorldPos = GridToWorld(GridPos);
+
+	return ActorOffset + CellWorldPos;
 }
 
-// ──────────────────────────────
-// (수정됨) 캐릭터용 헬퍼 함수
-// ──────────────────────────────
 FVector ABattleManager::GetWorldLocationForCharacter(ACharacterBase* Character) const
 {
 	if (!Character) return FVector::ZeroVector;
-
-	// (수정) GetWorldLocation에 bool 인수가 필요 없어짐
 	return GetWorldLocation(Character->GridCoord);
 }
 
-// ──────────────────────────────
-// (수정됨) 좌표 <-> 인덱스 변환 유틸리티
-// ──────────────────────────────
 int32 ABattleManager::GetGridIndexFromCoord(FIntPoint Coord) const
 {
-	if (!GridActorRef || !GridActorRef->Implements<UGridDataInterface>()) return -1;
+	if (!GridInterface) return -1;
+	// BP_GridISM의 BP 함수를 직접 호출
 	return IGridDataInterface::Execute_GetGridIndexFromCoord(GridActorRef, Coord);
 }
 
 FIntPoint ABattleManager::GetGridCoordFromIndex(int32 Index) const
 {
-	if (!GridActorRef || !GridActorRef->Implements<UGridDataInterface>()) return FIntPoint::ZeroValue;
+	if (!GridInterface) return FIntPoint(-1, -1);
+	// BP_GridISM의 BP 함수를 직접 호출
 	return IGridDataInterface::Execute_GetGridCoordFromIndex(GridActorRef, Index);
-}
-
-// ──────────────────────────────
-// (신규) 겹치기 및 경계 검사 유틸리티
-// ──────────────────────────────
-bool ABattleManager::IsValidGridCoord(FIntPoint Coord) const
-{
-	if (!GridActorRef || !GridActorRef->Implements<UGridDataInterface>())
-	{
-		return false;
-	}
-
-	const int32 GridWidth = IGridDataInterface::Execute_GetGridWidth(GridActorRef);
-	const int32 GridHeight = IGridDataInterface::Execute_GetGridHeight(GridActorRef);
-
-	return (Coord.X >= 0 && Coord.X < GridWidth && Coord.Y >= 0 && Coord.Y < GridHeight);
 }
 
 ACharacterBase* ABattleManager::GetCharacterAt(FIntPoint Coord) const
 {
 	// 1. 플레이어 확인
-	if (PlayerCharacter && !PlayerCharacter->bDead && PlayerCharacter->GridCoord == Coord)
+	if (PlayerRef && !PlayerRef->bDead && PlayerRef->GridCoord == Coord)
 	{
-		return PlayerCharacter;
+		return PlayerRef;
 	}
 
 	// 2. 적 배열 확인
@@ -251,9 +287,8 @@ ACharacterBase* ABattleManager::GetCharacterAt(FIntPoint Coord) const
 	return nullptr; // 해당 위치에 아무도 없음
 }
 
-
 // ──────────────────────────────
-// 전투 종료 조건 (기존과 동일)
+// 전투 종료 조건
 // ──────────────────────────────
 void ABattleManager::CheckSingleEnemyTimer()
 {
@@ -290,25 +325,12 @@ void ABattleManager::CheckBattleResult()
 			AliveEnemies++;
 	}
 
-	if (!PlayerCharacter || PlayerCharacter->bDead)
+	if (PlayerRef && PlayerRef->bDead)
 	{
-		CurrentState = EBattleState::Defeat;
-		UE_LOG(LogTemp, Warning, TEXT("Battle Defeat! Player dead."));
-		return;
+		EndBattle(false); // 패배
 	}
-
-	if (AliveEnemies == 0)
+	else if (AliveEnemies == 0)
 	{
-		if (CurrentRound < MaxRoundCount)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Round %d cleared. Next round incoming..."), CurrentRound);
-			EndRound();
-			StartRound();
-		}
-		else
-		{
-			CurrentState = EBattleState::Victory;
-			UE_LOG(LogTemp, Warning, TEXT("Battle Victory! All enemies defeated in final round."));
-		}
+		EndBattle(true); // 승리
 	}
 }

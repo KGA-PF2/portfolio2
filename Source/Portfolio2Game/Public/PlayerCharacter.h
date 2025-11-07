@@ -1,10 +1,16 @@
-﻿#pragma once
+﻿// PlayerCharacter.h
+
+#pragma once
 
 #include "CoreMinimal.h"
 #include "CharacterBase.h"
 #include "PlayerCharacter.generated.h"
 
-/** (신규) GAS 입력 바인딩을 위한 Enum 정의 */
+// (신규) Enhanced Input 헤더
+class UInputMappingContext;
+class UInputAction;
+
+/** (기존) GAS 입력 바인딩용 Enum */
 namespace PlayerAbilityInputID
 {
 	const int32 None = 0;
@@ -25,41 +31,42 @@ public:
 	APlayerCharacter();
 
 protected:
-	virtual void BeginPlay() override;
+	// ❌ (제거) BeginPlay() (부모 클래스(CharacterBase)가 BattleManager를 찾음)
 
-	/** (수정됨) WASD/스킬 입력을 GAS 태그에 바인딩합니다. */
+	/** (수정됨) WASD 입력을 Enhanced Input으로 연결합니다. */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	/** (신규) AbilitySystemComponent에 입력을 바인딩하기 위해 PossessedBy에서 호출됩니다. */
+	/** (수정됨) 컨트롤러에 빙의될 때 ASC 초기화 및 Enhanced Input 컨텍스트를 추가합니다. */
 	virtual void PossessedBy(AController* NewController) override;
 
 	// ──────────────────────────────
-	// (신규) 입력 바인딩 래퍼 함수
+	// (신규) ENHANCED INPUT (캐릭터용)
 	// ──────────────────────────────
+
+	/** 캐릭터 이동(WASD)을 위한 매핑 컨텍스트 (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputMappingContext> PlayerMoveContext;
+
+	/** W키 (앞으로 이동) (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_MoveUp;
+
+	/** S키 (뒤로 이동) (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_MoveDown;
+
+	/** A키 (왼쪽으로 이동) (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_MoveLeft;
+
+	/** D키 (오른쪽으로 이동) (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_MoveRight;
+
 private:
+	// 입력 래퍼 함수 (기존과 동일)
 	void Input_MoveUp();
 	void Input_MoveDown();
 	void Input_MoveLeft();
 	void Input_MoveRight();
-	// (필요시)
-	// void Input_ExecuteSkills();
-	// void Input_CancelSkills();
-
-public:
-	// ──────────────────────────────
-	// 턴 제어
-	// ──────────────────────────────
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turn")
-	bool bCanAct = false; // 내 턴일 때만 입력 허용
-
-
-	// ──────────────────────────────
-	// 행동 함수
-	// ──────────────────────────────
-	UFUNCTION(BlueprintCallable, Category = "Turn")
-	void EnableAction(bool bEnable); // 턴 시작/종료 시 호출
-
-	UFUNCTION(BlueprintCallable, Category = "Turn")
-	void EndAction(); // 행동 1회 끝났을 때
-
 };

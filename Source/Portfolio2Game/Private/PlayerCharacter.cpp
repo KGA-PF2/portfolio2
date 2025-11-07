@@ -1,62 +1,91 @@
-﻿#include "PlayerCharacter.h"
+﻿// PlayerCharacter.cpp
+
+#include "PlayerCharacter.h"
 #include "BattleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameplayAbilitySpec.h"
-#include "AbilitySystemComponent.h" // (신규) GAS 입력 바인딩을 위해 포함
+#include "AbilitySystemComponent.h" // GAS 입력 바인딩을 위해 포함
+
+// (신규) Enhanced Input 관련 헤더
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
+#include "GameFramework/PlayerController.h" // GetLocalPlayer()를 위해 필요
 
 APlayerCharacter::APlayerCharacter()
 {
 	bCanAct = false;
 }
 
-void APlayerCharacter::BeginPlay()
-{
-	Super::BeginPlay();
-	// ❌ BattleManagerRef 찾기 로직 제거 (부모 클래스(CharacterBase)가 수행)
-}
+// ❌ (제거) BeginPlay() (부모 클래스(CharacterBase)가 BattleManager를 찾음)
 
 /**
- * (신규) 컨트롤러에 빙의될 때 ASC(AbilitySystemComponent)에 입력을 바인딩합니다.
+ * (수정됨) 컨트롤러에 빙의될 때 ASC 초기화 및 Enhanced Input 컨텍스트를 추가합니다.
  */
 void APlayerCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	// 서버에서 ASC 초기화
+	// 1. 서버에서 ASC 초기화
 	if (AbilitySystem)
 	{
 		AbilitySystem->InitAbilityActorInfo(this, this);
 	}
+
+	// 2. (신규) 로컬 플레이어 컨트롤러에만 WASD용 매핑 컨텍스트 추가
+	APlayerController* PC = Cast<APlayerController>(NewController);
+	if (PC)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
+		{
+			// (중요) PlayerMoveContext를 추가합니다. (BP의 컨텍스트(0)보다 높은 Priority(1)로 설정)
+			if (PlayerMoveContext)
+			{
+				Subsystem->AddMappingContext(PlayerMoveContext, 1);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("%s: 'PlayerMoveContext'가 할당되지 않았습니다. BP_PlayerCharacter에서 설정하세요."), *GetName());
+			}
+		}
+	}
 }
 
 /**
- * (수정됨) WASD/스킬 입력을 이 클래스의 래퍼 함수에 연결합니다.
+ * (수정됨) Enhanced Input Action을 래퍼 함수에 연결합니다.
  */
 void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	if (AbilitySystem && PlayerInputComponent)
+	// (신규) Enhanced Input Component로 캐스팅
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		// 1. (오류 수정!) FAbilityInputBinding을 사용하지 않고,
-		//    BindAction을 'this' (PlayerCharacter)의 멤버 함수에 바인딩합니다.
-
-		static const FName InputName_MoveUp("MoveUp");
-		static const FName InputName_MoveDown("MoveDown");
-		static const FName InputName_MoveLeft("MoveLeft");
-		static const FName InputName_MoveRight("MoveRight");
-
-		PlayerInputComponent->BindAction(InputName_MoveUp, IE_Pressed, this, &APlayerCharacter::Input_MoveUp);
-		PlayerInputComponent->BindAction(InputName_MoveDown, IE_Pressed, this, &APlayerCharacter::Input_MoveDown);
-		PlayerInputComponent->BindAction(InputName_MoveLeft, IE_Pressed, this, &APlayerCharacter::Input_MoveLeft);
-		PlayerInputComponent->BindAction(InputName_MoveRight, IE_Pressed, this, &APlayerCharacter::Input_MoveRight);
-
-		// (참고) BindAbilityActivationToInputComponent는 이제 필요하지 않습니다.
+		// (신규) IA_Move... 액션을 Input_Move... 함수에 바인딩
+		if (IA_MoveUp)
+		{
+			EnhancedInputComponent->BindAction(IA_MoveUp, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_MoveUp);
+		}
+		if (IA_MoveDown)
+		{
+			EnhancedInputComponent->BindAction(IA_MoveDown, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_MoveDown);
+		}
+		if (IA_MoveLeft)
+		{
+			EnhancedInputComponent->BindAction(IA_MoveLeft, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_MoveLeft);
+		}
+		if (IA_MoveRight)
+		{
+			EnhancedInputComponent->BindAction(IA_MoveRight, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_MoveRight);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("'%s' Enhanced Input Component를 찾지 못했습니다! PlayerController 또는 Project 세팅을 확인하세요."), *GetNameSafe(this));
 	}
 }
 
 // ──────────────────────────────
-// (신규) 입력 래퍼 함수 구현
+// (기존) 입력 래퍼 함수 구현 (수정 없음)
 // ──────────────────────────────
 void APlayerCharacter::Input_MoveUp()
 {
@@ -90,27 +119,3 @@ void APlayerCharacter::Input_MoveRight()
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveRight);
 	}
 }
-
-// ──────────────────────────────
-// 턴 관리
-// ──────────────────────────────
-void APlayerCharacter::EnableAction(bool bEnable)
-{
-	bCanAct = bEnable;
-}
-
-void APlayerCharacter::EndAction()
-{
-	if (!bCanAct) return;
-	bCanAct = false;
-
-	// (수정) BattleManagerRef는 부모 클래스(CharacterBase)의 변수를 사용
-	if (BattleManagerRef)
-	{
-		BattleManagerRef->EndPlayerTurn();
-	}
-}
-
-// ──────────────────────────────
-// ❌ 기존 Handle 함수들 모두 제거
-// ──────────────────────────────

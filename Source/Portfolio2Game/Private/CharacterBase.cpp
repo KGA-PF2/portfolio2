@@ -1,12 +1,14 @@
-﻿#include "CharacterBase.h"
+﻿// CharacterBase.cpp
+
+#include "CharacterBase.h"
 #include "GameplayAbilitySpec.h"
-#include "BattleManager.h"      // (신규) BattleManager 포함
-#include "PlayerCharacter.h"    // (신규) GiveMoveAbilities에서 InputID를 사용하기 위해 포함
-#include "Kismet/GameplayStatics.h" // (신규) GetActorOfClass를 위해 포함
+#include "BattleManager.h"      
+#include "PlayerCharacter.h"    // PlayerAbilityInputID를 사용하기 위해 포함
+#include "Kismet/GameplayStatics.h" 
+#include "GA_Move.h" // GA_Move 클래스를 직접 참조하기 위해 포함
 
 ACharacterBase::ACharacterBase()
 {
-	// (수정) Tick을 사용하지 않으므로 비활성화
 	PrimaryActorTick.bCanEverTick = false;
 
 	AbilitySystem = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystem"));
@@ -17,7 +19,6 @@ void ACharacterBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// (신규) BeginPlay 시 BattleManager를 찾아 저장
 	BattleManagerRef = Cast<ABattleManager>(
 		UGameplayStatics::GetActorOfClass(GetWorld(), ABattleManager::StaticClass()));
 
@@ -27,75 +28,111 @@ void ACharacterBase::BeginPlay()
 	}
 
 	if (AbilitySystem)
+	{
 		AbilitySystem->InitAbilityActorInfo(this, this);
+
+		// ❌ (오류 수정) FOnAttributeChangeData 델리게이트 바인딩 로직을 C++에서 제거합니다.
+		// (이 작업은 BP_CharacterBase의 EventBeginPlay에서 수행해야 합니다.)
+	}
+
 
 	if (HasAuthority())
 	{
 		InitAttributes();
 		GiveAllSkills();
-		GiveMoveAbilities(); // (신규) 이동 어빌리티 부여
+		GiveMoveAbilities();
 	}
-
-	// ❌ Tick 관련 코드 모두 제거
 }
 
-// ❌ Tick 함수 제거
+// ───────── GAS ─────────
 
 void ACharacterBase::InitAttributes()
 {
-	if (Attributes)
-		Attributes->InitHealth(10.f);
+	if (AbilitySystem && EffectList.Num() > 0)
+	{
+		FGameplayEffectContextHandle EffectContext = AbilitySystem->MakeEffectContext();
+		EffectContext.AddSourceObject(this);
+
+		for (TSubclassOf<UGameplayEffect> EffectClass : EffectList)
+		{
+			FGameplayEffectSpecHandle SpecHandle = AbilitySystem->MakeOutgoingSpec(EffectClass, 1.0f, EffectContext);
+			if (SpecHandle.IsValid())
+			{
+				AbilitySystem->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+			}
+		}
+	}
 }
 
-// ───────── 스킬 보유 목록 → ASC 부여 ─────────
 void ACharacterBase::GiveAllSkills()
 {
-	if (!AbilitySystem || !HasAuthority()) return;
-
-	GrantedSkillHandles.Reset();
-
-	for (auto& SkillClass : SkillList)
+	if (AbilitySystem && HasAuthority())
 	{
-		if (!SkillClass) continue;
-		FGameplayAbilitySpecHandle Handle =
-			AbilitySystem->GiveAbility(FGameplayAbilitySpec(SkillClass, 1, INDEX_NONE, this));
-		GrantedSkillHandles.Add(Handle);
+		for (TSubclassOf<UGameplayAbility> SkillClass : SkillList)
+		{
+			if (SkillClass)
+			{
+				FGameplayAbilitySpec AbilitySpec(SkillClass, 1, 0, this);
+				AbilitySystem->GiveAbility(AbilitySpec);
+			}
+		}
 	}
 }
 
 /**
- * (신규) PlayerCharacter에 정의된 InputID와 연결하여 이동 어빌리티를 부여합니다.
+ * (오류 수정) 4개의 다른 BP 어빌리티를 4개의 다른 InputID에 바인딩합니다.
+ * 태그를 사용하지 않습니다.
  */
 void ACharacterBase::GiveMoveAbilities()
 {
-	if (!AbilitySystem || !HasAuthority()) return;
-
-	// PlayerAbilityInputID Enum 값은 PlayerCharacter.h에 정의될 예정입니다.
-	// (1: Fwd, 2: Bwd, 3: Left, 4: Right)
-	if (MoveAbility_Up)
+	if (AbilitySystem && HasAuthority())
 	{
-		AbilitySystem->GiveAbility(FGameplayAbilitySpec(MoveAbility_Up, 1, 1, this));
-	}
-	if (MoveAbility_Down)
-	{
-		AbilitySystem->GiveAbility(FGameplayAbilitySpec(MoveAbility_Down, 1, 2, this));
-	}
-	if (MoveAbility_Left)
-	{
-		AbilitySystem->GiveAbility(FGameplayAbilitySpec(MoveAbility_Left, 1, 3, this));
-	}
-	if (MoveAbility_Right)
-	{
-		AbilitySystem->GiveAbility(FGameplayAbilitySpec(MoveAbility_Right, 1, 4, this));
+		if (MoveAbility_Up)
+		{
+			FGameplayAbilitySpec MoveUpSpec(MoveAbility_Up, 1, PlayerAbilityInputID::MoveUp, this);
+			AbilitySystem->GiveAbility(MoveUpSpec);
+		}
+		if (MoveAbility_Down)
+		{
+			FGameplayAbilitySpec MoveDownSpec(MoveAbility_Down, 1, PlayerAbilityInputID::MoveDown, this);
+			AbilitySystem->GiveAbility(MoveDownSpec);
+		}
+		if (MoveAbility_Left)
+		{
+			FGameplayAbilitySpec MoveLeftSpec(MoveAbility_Left, 1, PlayerAbilityInputID::MoveLeft, this);
+			AbilitySystem->GiveAbility(MoveLeftSpec);
+		}
+		if (MoveAbility_Right)
+		{
+			FGameplayAbilitySpec MoveRightSpec(MoveAbility_Right, 1, PlayerAbilityInputID::MoveRight, this);
+			AbilitySystem->GiveAbility(MoveRightSpec);
+		}
 	}
 }
 
-// ───────── 예약/실행/취소 (기존과 동일) ─────────
-void ACharacterBase::ReserveSkill(TSubclassOf<UGameplayAbility> SkillClass)
+
+// ───────── 턴 관리 ─────────
+
+void ACharacterBase::StartAction()
+{
+	bCanAct = true;
+	ExecuteSkillQueue();
+}
+
+void ACharacterBase::EndAction()
+{
+	bCanAct = false;
+	if (BattleManagerRef)
+	{
+		BattleManagerRef->EndCharacterTurn(this);
+	}
+}
+
+// ───────── 스킬 큐 ─────────
+
+void ACharacterBase::EnqueueSkill(TSubclassOf<UGameplayAbility> SkillClass)
 {
 	if (!SkillClass) return;
-	if (!SkillList.Contains(SkillClass)) return;
-	if (QueuedSkills.Num() >= MaxQueuedSkills) return;
 	QueuedSkills.Add(SkillClass);
 }
 
@@ -117,18 +154,14 @@ void ACharacterBase::CancelSkillQueue()
 }
 
 // ───────── 이동/회전 (수정됨) ─────────
-void ACharacterBase::MoveToCell(FIntPoint Target)
-{
-	// (수정) 이 함수는 이제 GA_Move가 아닌 다른 방식(예: 스킬)으로
-	// 캐릭터의 좌표만 강제 이동시킬 때 사용합니다.
-	GridCoord = Target;
 
-	// (신규) BattleManager에게도 좌표가 변경되었음을 알려야 합니다.
-	if (BattleManagerRef)
-	{
-		// (참고) BattleManager에 UpdateCharacterOccupancy 함수를 추가하는 것이 좋습니다.
-		// (현재는 GetCharacterAt이 실시간으로 검색하므로 필수 아님)
-	}
+/**
+ * (수정됨) 캐릭터의 논리적 위치(좌표와 인덱스)를 업데이트합니다.
+ */
+void ACharacterBase::MoveToCell(FIntPoint TargetCoord, int32 TargetIndex)
+{
+	GridCoord = TargetCoord;
+	GridIndex = TargetIndex;
 }
 
 void ACharacterBase::Turn(bool bRight)
@@ -136,31 +169,26 @@ void ACharacterBase::Turn(bool bRight)
 	bFacingRight = bRight;
 }
 
-// ❌ OnMovementFinished 함수 제거
-
 /**
- * (신규) BattleManager에게 물어봐서 현재 1D 인덱스를 가져옵니다.
+ * (신규) GridIndex 변수를 반환합니다.
  */
 int32 ACharacterBase::GetGridIndex() const
 {
-	if (!BattleManagerRef) return -1;
-
-	// BattleManager의 유틸리티 함수(GetGridIndexFromCoord)를 호출합니다.
-	return BattleManagerRef->GetGridIndexFromCoord(GridCoord);
+	return GridIndex;
 }
 
-// ───────── 대미지/사망 (기존과 동일) ─────────
-void ACharacterBase::ApplyDamage(float Amount)
+// ───────── 스탯/데미지 (오류 수정) ─────────
+
+/**
+ * (신규) EnemyCharacter가 호출할 수 있도록 ApplyDamage를 다시 구현합니다.
+ */
+void ACharacterBase::ApplyDamage(float Damage)
 {
-	if (!Attributes) return;
-	const float NewHP = Attributes->GetHP() - Amount;
-	Attributes->SetHP(NewHP);
-	if (NewHP <= 0.f)
-		Die();
+	if (Attributes)
+	{
+		// BaseAttributeSet.h에 정의된 인라인 함수 사용
+		Attributes->ApplyDamage(Damage);
+	}
 }
 
-void ACharacterBase::Die()
-{
-	bDead = true;
-	Destroy();
-}
+// ❌ (오류 수정) FOnAttributeChangeData 델리게이트 함수 구현부 제거
