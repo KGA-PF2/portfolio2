@@ -123,7 +123,9 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	}
 
 	// 6. 목표 월드 위치 계산
-	const FVector TargetLocation = BattleManagerRef->GetWorldLocation(TargetCoord);
+	FVector TargetLocation = BattleManagerRef->GetWorldLocation(TargetCoord);
+	TargetLocation.Z += PlayerChar->SpawnZOffset;
+
 
 	// 7. (신규) 순간이동 실행
 	PlayerChar->SetActorLocation(TargetLocation);

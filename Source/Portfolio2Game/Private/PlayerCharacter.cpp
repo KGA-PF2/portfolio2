@@ -84,38 +84,57 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	}
 }
 
-// ──────────────────────────────
-// (기존) 입력 래퍼 함수 구현 (수정 없음)
-// ──────────────────────────────
+
+// (기존) 입력 래퍼 함수 구현 
 void APlayerCharacter::Input_MoveUp()
 {
+	if (bInputLocked) return; // 잠금 중이면 무시
+
 	if (AbilitySystem)
 	{
-		// ASC에 InputID(1)를 눌렀다고 알립니다.
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveUp);
+		LockInputTemporarily();
 	}
 }
 
 void APlayerCharacter::Input_MoveDown()
 {
+	if (bInputLocked) return;
 	if (AbilitySystem)
 	{
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveDown);
+		LockInputTemporarily();
 	}
 }
 
 void APlayerCharacter::Input_MoveLeft()
 {
+	if (bInputLocked) return;
 	if (AbilitySystem)
 	{
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveLeft);
+		LockInputTemporarily();
 	}
 }
 
 void APlayerCharacter::Input_MoveRight()
 {
+	if (bInputLocked) return;
 	if (AbilitySystem)
 	{
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveRight);
+		LockInputTemporarily();
 	}
+}
+
+void APlayerCharacter::LockInputTemporarily()
+{
+	bInputLocked = true;
+	GetWorld()->GetTimerManager().SetTimer(InputLockTimerHandle, this,
+		&APlayerCharacter::UnlockInput, InputCooldown, false);
+}
+
+void APlayerCharacter::UnlockInput()
+{
+	bInputLocked = false;
 }

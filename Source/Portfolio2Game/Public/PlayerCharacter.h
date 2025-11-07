@@ -30,6 +30,16 @@ class PORTFOLIO2GAME_API APlayerCharacter : public ACharacterBase
 public:
 	APlayerCharacter();
 
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Turn System")
+	float InputCooldown = 0.3f; // 0.3초 쿨타임
+
+private:
+	bool bInputLocked = false;  // 입력 잠금 여부
+	FTimerHandle InputLockTimerHandle;
+
+
 protected:
 	// ❌ (제거) BeginPlay() (부모 클래스(CharacterBase)가 BattleManager를 찾음)
 
@@ -69,4 +79,6 @@ private:
 	void Input_MoveDown();
 	void Input_MoveLeft();
 	void Input_MoveRight();
+	void LockInputTemporarily();
+	void UnlockInput();
 };

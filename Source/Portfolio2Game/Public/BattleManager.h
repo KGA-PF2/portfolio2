@@ -1,10 +1,10 @@
-﻿// BattleManager.h
+﻿// BattleManager.h (최종 수정본)
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "GridDataInterface.h" // (필수) 인터페이스 포함
+#include "GridDataInterface.h" 
 #include "BattleManager.generated.h"
 
 // 전방 선언
@@ -34,9 +34,10 @@ protected:
 	virtual void BeginPlay() override;
 
 	// ──────────────────────────────
-	// 전투 상태
+	// (오류 수정) protected: 였던 모든 변수와 함수를 public: 으로 이동
 	// ──────────────────────────────
-protected: // (보호됨)
+public:
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Battle")
 	EBattleState CurrentState = EBattleState::None;
 
@@ -57,27 +58,27 @@ protected: // (보호됨)
 	// ──────────────────────────────
 	// 액터 참조 (수정됨)
 	// ──────────────────────────────
-protected: // (보호됨)
+
 	/** (필수) 맵에 배치된 BP_GridISM 액터를 연결해야 합니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grid")
 	TObjectPtr<AActor> GridActorRef;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Actors")
-	TObjectPtr<APlayerCharacter> PlayerRef;
+	TObjectPtr<APlayerCharacter> PlayerRef; // 에디터에서 None이 정상
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Actors")
 	TArray<TObjectPtr<AEnemyCharacter>> Enemies;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Actors")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Actors")
 	TSubclassOf<APlayerCharacter> PlayerClass;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Actors")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Actors")
 	TSubclassOf<AEnemyCharacter> EnemyClass;
 
 	// ──────────────────────────────
 	// 전투 흐름
 	// ──────────────────────────────
-public: // (공개됨)
+public:
 	UFUNCTION(BlueprintCallable)
 	void BeginBattle();
 
@@ -99,20 +100,20 @@ public: // (공개됨)
 	UFUNCTION(BlueprintCallable)
 	void EndCharacterTurn(ACharacterBase* Character);
 
-protected: // (보호됨)
+protected:
 	void ExecuteEnemyActions();
 
 	// ──────────────────────────────
 	// 스폰 관련 (수정됨)
 	// ──────────────────────────────
-protected: // (보호됨)
+protected:
 	/** (수정됨) 플레이어가 스폰될 타일의 인덱스 (세로 우선) */
 	UPROPERTY(EditAnywhere, Category = "Spawn")
-	int32 PlayerSpawnIndex = 10; // 7x5(WxH) 기준 (X=2, Y=0) -> 2*5+0 = 10
+	int32 PlayerSpawnIndex = 10;
 
 	/** (수정됨) 적들이 스폰될 타일 인덱스 목록 (세로 우선) */
 	UPROPERTY(EditAnywhere, Category = "Spawn")
-	TArray<int32> EnemySpawnIndices; // 예: { 30, 31, 32 } (X=6)
+	TArray<int32> EnemySpawnIndices;
 
 	UFUNCTION(BlueprintCallable)
 	void SpawnPlayer();
@@ -128,14 +129,12 @@ public:
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Grid")
 	TScriptInterface<IGridDataInterface> GridInterface;
 
-	/** (기존) 셀 중심 월드 좌표를 반환 (GridActorRef의 정보를 사용) */
 	FVector GridToWorld(FIntPoint GridPos) const;
 
 	/** (오류 수정) GA_Move가 접근할 수 있도록 public으로 이동 */
 	UFUNCTION(BlueprintCallable, Category = "Grid")
 	FVector GetWorldLocation(FIntPoint GridPos) const;
 
-	/** (기존) 캐릭터의 현재 그리드 좌표를 기반으로 중앙 월드 위치를 반환합니다. */
 	UFUNCTION(BlueprintCallable, Category = "Grid")
 	FVector GetWorldLocationForCharacter(ACharacterBase* Character) const;
 
@@ -154,7 +153,9 @@ public:
 	// ──────────────────────────────
 	// 전투 종료 조건
 	// ──────────────────────────────
-protected: // (보호됨)
+protected:
 	void CheckSingleEnemyTimer();
 	void CheckBattleResult();
+
+	FTimerHandle TurnDelayHandle;
 };

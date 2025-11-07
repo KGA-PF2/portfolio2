@@ -1,10 +1,9 @@
-﻿// BattleManager.cpp
-
-#include "BattleManager.h" 
+﻿#include "BattleManager.h" 
 #include "PlayerCharacter.h"
 #include "EnemyCharacter.h"
 #include "CharacterBase.h"      
-#include "GridDataInterface.h"  // (필수) 인터페이스 헤더 포함
+#include "GridDataInterface.h" 
+#include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
 
 ABattleManager::ABattleManager()
@@ -12,8 +11,6 @@ ABattleManager::ABattleManager()
 	PrimaryActorTick.bCanEverTick = false;
 
 	// (신규) 7x5 (WxH) 세로 우선 인덱스 기본값
-	// (X=5, Y=0~4) -> 5*5+0 = 25 ~ 5*5+4 = 29
-	// (X=6, Y=0~4) -> 6*5+0 = 30 ~ 6*5+4 = 34
 	EnemySpawnIndices = { 25, 26, 27, 28, 29, 30, 31, 32, 33, 34 };
 	PlayerSpawnIndex = 10; // (X=2, Y=0) -> 2*5+0 = 10
 }
@@ -29,7 +26,6 @@ void ABattleManager::BeginPlay()
 		return;
 	}
 
-	// GridDataInterface를 구현했는지 확인하고 캐시
 	GridInterface.SetObject(GridActorRef);
 	GridInterface.SetInterface(Cast<IGridDataInterface>(GridActorRef));
 
@@ -39,8 +35,6 @@ void ABattleManager::BeginPlay()
 		return;
 	}
 
-	// 2. 전투 시작
-	BeginBattle();
 }
 
 // ──────────────────────────────
@@ -58,8 +52,8 @@ void ABattleManager::BeginBattle()
 	TurnCount = 0;
 	TurnsSinceSingleEnemy = 0;
 
-	SpawnPlayer();
-	SpawnEnemiesForRound(); // 첫 라운드 스폰
+	SpawnPlayer(); // (수정됨) PlayerStart 스폰 문제를 해결하기 위해 먼저 스폰
+	SpawnEnemiesForRound();
 
 	if (PlayerRef)
 	{
@@ -141,14 +135,17 @@ void ABattleManager::EndCharacterTurn(ACharacterBase* Character)
 		return;
 	}
 
-	if (Cast<APlayerCharacter>(Character))
-	{
-		StartEnemyTurn();
-	}
-	else
-	{
-		StartPlayerTurn();
-	}
+	// 전체 입력 잠금 0.3초
+	GetWorld()->GetTimerManager().SetTimerForNextTick([this, Character]()
+		{
+			GetWorld()->GetTimerManager().SetTimer(TurnDelayHandle, [this, Character]()
+				{
+					if (Cast<APlayerCharacter>(Character))
+						StartEnemyTurn();
+					else
+						StartPlayerTurn();
+				}, 0.3f, false);
+		});
 }
 
 void ABattleManager::ExecuteEnemyActions()
@@ -164,28 +161,60 @@ void ABattleManager::ExecuteEnemyActions()
 }
 
 // ──────────────────────────────
-// 스폰 관련 (인덱스 기반으로 수정됨)
+// 스폰 관련 (인덱스 기반 및 Possess 수정)
 // ──────────────────────────────
 
 void ABattleManager::SpawnPlayer()
 {
-	if (!PlayerClass || !GridInterface) return;
+	// (오류 수정) PlayerClass가 None이면 스폰을 중단합니다.
+	if (!PlayerClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("BattleManager: 'Player Class'가 None입니다! 레벨의 BattleManager 디테일 패널에서 'BP_PlayerCharacter'를 할당하세요."));
+		return;
+	}
+	if (!GridInterface) return;
 
-	if (PlayerRef) PlayerRef->Destroy(); // 기존 플레이어 제거
+	// (PlayerStart 스폰 문제 해결) 
+	// 1. 컨트롤러를 미리 찾습니다.
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
 
-	// 1. (수정) 인덱스(칸 번호)로부터 FIntPoint 좌표 획득
+	// 2. 기존 플레이어(PlayerStart에서 스폰된)가 있다면 파괴
+	if (PC && PC->GetPawn())
+	{
+		PC->GetPawn()->Destroy();
+	}
+	if (PlayerRef)
+	{
+		PlayerRef->Destroy();
+	}
+
+	// 3. 인덱스(칸 번호)로부터 FIntPoint 좌표 획득
 	FIntPoint SpawnCoord = GetGridCoordFromIndex(PlayerSpawnIndex);
 
-	// 2. 좌표로 월드 위치 획득
+	// 4. 좌표로 월드 위치 획득
 	FVector SpawnLocation = GetWorldLocation(SpawnCoord);
 
-	// 3. 스폰
+	// 플레이어 스폰 높이 보정 (BP에서 설정한 값 사용)
+	SpawnLocation.Z += (PlayerClass->GetDefaultObject<APlayerCharacter>())->SpawnZOffset;
+
+	// 5. 스폰
 	PlayerRef = GetWorld()->SpawnActor<APlayerCharacter>(PlayerClass, SpawnLocation, FRotator::ZeroRotator);
 	if (PlayerRef)
 	{
-		// 4. (중요) 캐릭터의 논리적 위치(좌표와 인덱스) 둘 다 설정
+		// 6. 캐릭터의 논리적 위치(좌표와 인덱스) 둘 다 설정
 		PlayerRef->GridCoord = SpawnCoord;
 		PlayerRef->GridIndex = PlayerSpawnIndex;
+
+		// 7. (가장 중요) 컨트롤러가 새로 스폰된 폰에 즉시 빙의(Possess)
+		//    이 코드가 없으면 "아무것도 안 나오는" 상태가 됩니다.
+		if (PC)
+		{
+			PC->Possess(PlayerRef);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("BattleManager: SpawnActor<APlayerCharacter>가 실패했습니다. PlayerClass가 유효한지 확인하세요."));
 	}
 }
 
@@ -193,27 +222,19 @@ void ABattleManager::SpawnEnemiesForRound()
 {
 	if (!EnemyClass || !GridInterface) return;
 
-	// 기존 적 제거
-	for (AEnemyCharacter* Enemy : Enemies)
-	{
-		if (Enemy) Enemy->Destroy();
-	}
-	Enemies.Empty();
 
 	// (수정) EnemySpawnIndices 배열 사용
 	for (const int32 SpawnIndex : EnemySpawnIndices)
 	{
-		// 1. 인덱스 -> 좌표
 		FIntPoint SpawnCoord = GetGridCoordFromIndex(SpawnIndex);
-
-		// 2. 좌표 -> 월드 위치
 		FVector SpawnLocation = GetWorldLocation(SpawnCoord);
+		SpawnLocation.Z += (EnemyClass->GetDefaultObject<AEnemyCharacter>())->SpawnZOffset;
 
-		// 3. 스폰
+
 		AEnemyCharacter* NewEnemy = GetWorld()->SpawnActor<AEnemyCharacter>(EnemyClass, SpawnLocation, FRotator::ZeroRotator);
+
 		if (NewEnemy)
 		{
-			// 4. (중요) 논리적 위치(좌표와 인덱스) 둘 다 설정
 			NewEnemy->GridCoord = SpawnCoord;
 			NewEnemy->GridIndex = SpawnIndex;
 			Enemies.Add(NewEnemy);
@@ -229,7 +250,6 @@ FVector ABattleManager::GridToWorld(FIntPoint GridPos) const
 {
 	if (!GridInterface) return FVector::ZeroVector;
 
-	// BP_GridISM의 변수(사이즈)를 인터페이스를 통해 가져옴
 	const double SizeX = IGridDataInterface::Execute_GetGridSizeX(GridActorRef);
 	const double SizeY = IGridDataInterface::Execute_GetGridSizeY(GridActorRef);
 
@@ -256,26 +276,22 @@ FVector ABattleManager::GetWorldLocationForCharacter(ACharacterBase* Character) 
 int32 ABattleManager::GetGridIndexFromCoord(FIntPoint Coord) const
 {
 	if (!GridInterface) return -1;
-	// BP_GridISM의 BP 함수를 직접 호출
 	return IGridDataInterface::Execute_GetGridIndexFromCoord(GridActorRef, Coord);
 }
 
 FIntPoint ABattleManager::GetGridCoordFromIndex(int32 Index) const
 {
 	if (!GridInterface) return FIntPoint(-1, -1);
-	// BP_GridISM의 BP 함수를 직접 호출
 	return IGridDataInterface::Execute_GetGridCoordFromIndex(GridActorRef, Index);
 }
 
 ACharacterBase* ABattleManager::GetCharacterAt(FIntPoint Coord) const
 {
-	// 1. 플레이어 확인
 	if (PlayerRef && !PlayerRef->bDead && PlayerRef->GridCoord == Coord)
 	{
 		return PlayerRef;
 	}
 
-	// 2. 적 배열 확인
 	for (AEnemyCharacter* Enemy : Enemies)
 	{
 		if (Enemy && !Enemy->bDead && Enemy->GridCoord == Coord)
@@ -284,8 +300,9 @@ ACharacterBase* ABattleManager::GetCharacterAt(FIntPoint Coord) const
 		}
 	}
 
-	return nullptr; // 해당 위치에 아무도 없음
+	return nullptr;
 }
+
 
 // ──────────────────────────────
 // 전투 종료 조건
