@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "CharacterBase.h"
+#include "PlayerSkillData.h"
 #include "PlayerCharacter.generated.h"
 
 // (신규) Enhanced Input 헤더
@@ -73,6 +74,34 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
 	TObjectPtr<UInputAction> IA_MoveRight;
 
+
+	// ───────────── 스킬 관련 ─────────────
+	// 플레이어가 가진 전체 스킬
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+	TArray<FPlayerSkillData> OwnedSkills;
+
+	// 현재 턴에 사용할 스킬 대기열
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill")
+	TArray<USkillBase*> SkillQueue;
+
+	// 스킬 선택 (UI에서 호출)
+	UFUNCTION(BlueprintCallable)
+	void SelectSkill(USkillBase* Skill);
+
+	// 스킬 대기열 비우기 (턴 종료 후)
+	UFUNCTION(BlueprintCallable)
+	void ClearSkillQueue();
+
+	// 모든 쿨타임 감소
+	UFUNCTION(BlueprintCallable)
+	void ReduceCooldowns();
+
+	// 특정 스킬을 쿨타임 상태로 전환
+	void ApplySkillCooldown(USkillBase* UsedSkill);
+
+	// 대기열 비워졌는지 확인
+	bool HasQueuedSkill() const { return SkillQueue.Num() > 0; }
+
 private:
 	// 입력 래퍼 함수 (기존과 동일)
 	void Input_MoveUp();
@@ -81,4 +110,7 @@ private:
 	void Input_MoveRight();
 	void LockInputTemporarily();
 	void UnlockInput();
+
+
+
 };

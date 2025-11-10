@@ -211,6 +211,15 @@ void ABattleManager::SpawnPlayer()
 		{
 			PC->Possess(PlayerRef);
 		}
+		if (FieldCamera)
+		{
+			// SetViewTargetWithBlend의 두 번째 인자(0.f)는 즉시 변경하라는 의미입니다.
+			PC->SetViewTargetWithBlend(FieldCamera, 0.f);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("BattleManager: 'FieldCamera'가 None입니다! 레벨의 BattleManager 디테일 패널에서 맵에 배치된 카메라를 연결하세요."));
+		}
 	}
 	else
 	{

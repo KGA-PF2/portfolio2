@@ -4,7 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "GridDataInterface.h" 
+#include "GridDataInterface.h"
+#include "Camera/CameraActor.h"
 #include "BattleManager.generated.h"
 
 // 전방 선언
@@ -33,9 +34,6 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-	// ──────────────────────────────
-	// (오류 수정) protected: 였던 모든 변수와 함수를 public: 으로 이동
-	// ──────────────────────────────
 public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Battle")
@@ -74,6 +72,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Actors")
 	TSubclassOf<AEnemyCharacter> EnemyClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	TObjectPtr<ACameraActor> FieldCamera;
 
 	// ──────────────────────────────
 	// 전투 흐름
@@ -122,7 +123,7 @@ protected:
 	void SpawnEnemiesForRound();
 
 	// ──────────────────────────────
-	// 유틸리티 (오류 수정을 위해 public: 으로 이동)
+	// 유틸리티
 	// ──────────────────────────────
 public:
 	/** (오류 수정) GA_Move가 접근할 수 있도록 public으로 이동 */

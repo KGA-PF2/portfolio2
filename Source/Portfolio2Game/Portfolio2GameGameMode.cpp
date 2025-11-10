@@ -13,8 +13,7 @@ APortfolio2GameGameMode::APortfolio2GameGameMode()
 
 	PlayerControllerClass = APortfolio2GamePlayerController::StaticClass();
 
-	// (필수) 명시적으로 nullptr로 설정하여 자동 스폰을 완전히 금지합니다.
-	DefaultPawnClass = APlayerCharacter::StaticClass();
+	DefaultPawnClass = nullptr;
 }
 
 /**

@@ -16,11 +16,7 @@ APlayerCharacter::APlayerCharacter()
 	bCanAct = false;
 }
 
-// ❌ (제거) BeginPlay() (부모 클래스(CharacterBase)가 BattleManager를 찾음)
 
-/**
- * (수정됨) 컨트롤러에 빙의될 때 ASC 초기화 및 Enhanced Input 컨텍스트를 추가합니다.
- */
 void APlayerCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
@@ -137,4 +133,47 @@ void APlayerCharacter::LockInputTemporarily()
 void APlayerCharacter::UnlockInput()
 {
 	bInputLocked = false;
+}
+
+// 스킬 선택 (카드 클릭 시 호출)
+void APlayerCharacter::SelectSkill(USkillBase* Skill)
+{
+	if (!Skill || SkillQueue.Contains(Skill))
+		return;
+
+	SkillQueue.Add(Skill);
+
+	UE_LOG(LogTemp, Warning, TEXT("%s 스킬 선택됨"), *Skill->SkillName.ToString());
+
+	// 턴 종료
+	EndAction();
+}
+
+// 턴 종료 후 대기열 초기화
+void APlayerCharacter::ClearSkillQueue()
+{
+	SkillQueue.Empty();
+}
+
+// 모든 스킬 쿨타임 감소
+void APlayerCharacter::ReduceCooldowns()
+{
+	for (auto& SkillData : OwnedSkills)
+	{
+		if (SkillData.CurrentCooldown > 0)
+			SkillData.CurrentCooldown--;
+	}
+}
+
+// 스킬 사용 시 쿨타임 적용
+void APlayerCharacter::ApplySkillCooldown(USkillBase* UsedSkill)
+{
+	for (auto& SkillData : OwnedSkills)
+	{
+		if (SkillData.SkillInfo == UsedSkill)
+		{
+			SkillData.CurrentCooldown = SkillData.GetEffectiveTotalCooldown();
+			break;
+		}
+	}
 }
