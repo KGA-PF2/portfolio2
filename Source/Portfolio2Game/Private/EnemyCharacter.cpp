@@ -34,7 +34,7 @@ void AEnemyCharacter::ExecuteAIAction()
     else
     {
         // 2️⃣ 아니면 전진
-        MoveForward();
+        MoveUp();
     }
 }
 
@@ -56,20 +56,23 @@ void AEnemyCharacter::AttackNearestPlayer()
     }
     else
     {
-        MoveForward();
+        MoveUp();
     }
 }
 
 // ──────────────────────────────
 // 단순 전진 (격자 기준 1칸)
 // ──────────────────────────────
-void AEnemyCharacter::MoveForward()
+void AEnemyCharacter::MoveUp()
 {
-    const int Dir = bFacingRight ? 1 : -1;
+    if (!BattleManagerRef) return;
 
-    GridCoord.X += Dir; // 전방으로 한 칸
-    FVector NewLoc = FVector(GridCoord.X * 100.f, GridCoord.Y * 100.f, GetActorLocation().Z);
+    const int Dir = bFacingRight ? 1 : -1;
+    GridCoord.X += Dir; // 전방 한 칸
+
+    FVector NewLoc = BattleManagerRef->GetWorldLocation(GridCoord);
     SetActorLocation(NewLoc);
 
     UE_LOG(LogTemp, Warning, TEXT("%s moves to (%d,%d)"), *GetName(), GridCoord.X, GridCoord.Y);
 }
+

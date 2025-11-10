@@ -29,7 +29,7 @@ public:
     void AttackNearestPlayer();
 
     UFUNCTION(BlueprintCallable, Category = "AI")
-    void MoveForward();
+    void MoveUp();
 
     // ──────────────────────────────
     // 참조
@@ -37,6 +37,4 @@ public:
     UPROPERTY(BlueprintReadOnly, Category = "Battle")
     APlayerCharacter* PlayerRef;
 
-    UPROPERTY(BlueprintReadOnly, Category = "Battle")
-    ABattleManager* BattleManagerRef;
 };

@@ -1,67 +1,116 @@
-﻿#pragma once
+﻿// PlayerCharacter.h
+
+#pragma once
 
 #include "CoreMinimal.h"
 #include "CharacterBase.h"
+#include "PlayerSkillData.h"
 #include "PlayerCharacter.generated.h"
 
-class ABattleManager;
+// (신규) Enhanced Input 헤더
+class UInputMappingContext;
+class UInputAction;
 
-/**
- * 턴제 전투용 플레이어 캐릭터
- * - 입력 기반 행동 (이동, 회전, 스킬 예약/사용/취소)
- * - BattleManager와 턴 통신
- */
-UCLASS()
-class APlayerCharacter : public ACharacterBase
+/** (기존) GAS 입력 바인딩용 Enum */
+namespace PlayerAbilityInputID
 {
-    GENERATED_BODY()
+	const int32 None = 0;
+	const int32 MoveUp = 1;
+	const int32 MoveDown = 2;
+	const int32 MoveLeft = 3;
+	const int32 MoveRight = 4;
+	const int32 ExecuteSkills = 5;
+	const int32 CancelSkills = 6;
+}
+
+UCLASS()
+class PORTFOLIO2GAME_API APlayerCharacter : public ACharacterBase
+{
+	GENERATED_BODY()
 
 public:
-    APlayerCharacter();
+	APlayerCharacter();
+
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Turn System")
+	float InputCooldown = 0.3f; // 0.3초 쿨타임
+
+private:
+	bool bInputLocked = false;  // 입력 잠금 여부
+	FTimerHandle InputLockTimerHandle;
+
 
 protected:
-    virtual void BeginPlay() override;
-    virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	// ❌ (제거) BeginPlay() (부모 클래스(CharacterBase)가 BattleManager를 찾음)
 
-public:
-    // ──────────────────────────────
-    // 턴 제어
-    // ──────────────────────────────
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Turn")
-    bool bCanAct = false; // 내 턴일 때만 입력 허용
+	/** (수정됨) WASD 입력을 Enhanced Input으로 연결합니다. */
+	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-    // ──────────────────────────────
-    // 참조
-    // ──────────────────────────────
-    UPROPERTY(BlueprintReadOnly, Category = "Battle")
-    ABattleManager* BattleManagerRef;
+	/** (수정됨) 컨트롤러에 빙의될 때 ASC 초기화 및 Enhanced Input 컨텍스트를 추가합니다. */
+	virtual void PossessedBy(AController* NewController) override;
 
-    // ──────────────────────────────
-    // 행동 함수
-    // ──────────────────────────────
-    UFUNCTION(BlueprintCallable, Category = "Turn")
-    void EnableAction(bool bEnable); // 턴 시작/종료 시 호출
+	// ──────────────────────────────
+	// (신규) ENHANCED INPUT (캐릭터용)
+	// ──────────────────────────────
 
-    UFUNCTION(BlueprintCallable, Category = "Turn")
-    void EndAction(); // 행동 1회 끝났을 때
+	/** 캐릭터 이동(WASD)을 위한 매핑 컨텍스트 (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputMappingContext> PlayerMoveContext;
 
-    // 이동
-    UFUNCTION(BlueprintCallable, Category = "Action")
-    void HandleMove(FIntPoint TargetCell);
+	/** W키 (앞으로 이동) (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_MoveUp;
 
-    // 회전
-    UFUNCTION(BlueprintCallable, Category = "Action")
-    void HandleTurn(bool bRight);
+	/** S키 (뒤로 이동) (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_MoveDown;
 
-    // 스킬 예약
-    UFUNCTION(BlueprintCallable, Category = "Action")
-    void HandleReserveSkill(TSubclassOf<UGameplayAbility> SkillClass);
+	/** A키 (왼쪽으로 이동) (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_MoveLeft;
 
-    // 예약된 스킬 전부 실행
-    UFUNCTION(BlueprintCallable, Category = "Action")
-    void HandleExecuteSkills();
+	/** D키 (오른쪽으로 이동) (에디터에서 할당) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_MoveRight;
 
-    // 예약된 스킬 취소
-    UFUNCTION(BlueprintCallable, Category = "Action")
-    void HandleCancelSkills();
+
+	// ───────────── 스킬 관련 ─────────────
+	// 플레이어가 가진 전체 스킬
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+	TArray<FPlayerSkillData> OwnedSkills;
+
+	// 현재 턴에 사용할 스킬 대기열
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill")
+	TArray<USkillBase*> SkillQueue;
+
+	// 스킬 선택 (UI에서 호출)
+	UFUNCTION(BlueprintCallable)
+	void SelectSkill(USkillBase* Skill);
+
+	// 스킬 대기열 비우기 (턴 종료 후)
+	UFUNCTION(BlueprintCallable)
+	void ClearSkillQueue();
+
+	// 모든 쿨타임 감소
+	UFUNCTION(BlueprintCallable)
+	void ReduceCooldowns();
+
+	// 특정 스킬을 쿨타임 상태로 전환
+	void ApplySkillCooldown(USkillBase* UsedSkill);
+
+	// 대기열 비워졌는지 확인
+	bool HasQueuedSkill() const { return SkillQueue.Num() > 0; }
+
+private:
+	// 입력 래퍼 함수 (기존과 동일)
+	void Input_MoveUp();
+	void Input_MoveDown();
+	void Input_MoveLeft();
+	void Input_MoveRight();
+	void LockInputTemporarily();
+	void UnlockInput();
+
+
+
 };
