@@ -46,17 +46,13 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 	}
 }
 
-/**
- * (수정됨) Enhanced Input Action을 래퍼 함수에 연결합니다.
- */
+
 void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	// (신규) Enhanced Input Component로 캐스팅
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		// (신규) IA_Move... 액션을 Input_Move... 함수에 바인딩
 		if (IA_MoveUp)
 		{
 			EnhancedInputComponent->BindAction(IA_MoveUp, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_MoveUp);
@@ -72,6 +68,14 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		if (IA_MoveRight)
 		{
 			EnhancedInputComponent->BindAction(IA_MoveRight, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_MoveRight);
+		}
+		if (IA_ExecuteSkills)
+		{
+			EnhancedInputComponent->BindAction(IA_ExecuteSkills, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_ExecuteSkills);
+		}
+		if (IA_CancelSkills)
+		{
+			EnhancedInputComponent->BindAction(IA_CancelSkills, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_CancelSkills);
 		}
 	}
 	else
@@ -135,17 +139,35 @@ void APlayerCharacter::UnlockInput()
 	bInputLocked = false;
 }
 
-// 스킬 선택 (카드 클릭 시 호출)
 void APlayerCharacter::SelectSkill(USkillBase* Skill)
 {
+	// 1. (신규) 턴이 아니거나, 입력이 잠겼으면 무시
+	if (!bCanAct || bInputLocked)
+	{
+		return;
+	}
+
+	// 2. (신규) 최대 3개까지만 선택 가능
+	if (SkillQueue.Num() >= 3)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("스킬 큐가 가득 찼습니다 (최대 3개)."));
+		return;
+	}
+
+	// 3. (유지) 유효성 검사 및 중복 방지
 	if (!Skill || SkillQueue.Contains(Skill))
 		return;
 
+	// 4. (수정) UI 큐에만 추가
 	SkillQueue.Add(Skill);
 
-	UE_LOG(LogTemp, Warning, TEXT("%s 스킬 선택됨"), *Skill->SkillName.ToString());
+	// 5. ✅ [신규] UI 위젯에 "스킬 추가됨" 이벤트 발송
+	OnSkillSelected_BPEvent.Broadcast(Skill);
 
-	// 턴 종료
+	UE_LOG(LogTemp, Warning, TEXT("%s 스킬 선택됨 (현재 %d개)"), *Skill->SkillName.ToString(), SkillQueue.Num());
+
+	// 6. (유지) 턴 종료
+	LockInputTemporarily();
 	EndAction();
 }
 
@@ -162,6 +184,8 @@ void APlayerCharacter::ReduceCooldowns()
 	{
 		if (SkillData.CurrentCooldown > 0)
 			SkillData.CurrentCooldown--;
+
+
 	}
 }
 
@@ -175,5 +199,74 @@ void APlayerCharacter::ApplySkillCooldown(USkillBase* UsedSkill)
 			SkillData.CurrentCooldown = SkillData.GetEffectiveTotalCooldown();
 			break;
 		}
+	}
+}
+
+void APlayerCharacter::Input_ExecuteSkills()
+{
+	if (bInputLocked || !bCanAct) return; // 행동 불가시 무시
+	if (SkillQueue.Num() == 0) return; // 큐가 비었으면 무시
+
+	LockInputTemporarily(); // 입력 잠금.
+
+	UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 시작 ==="));
+	OnSkillQueueCleared_BPEvent.Broadcast();
+	ExecuteNextSkillInQueue_UI(); // 0.2초 딜레이 시퀀스 시작
+}
+
+void APlayerCharacter::Input_CancelSkills()
+{
+	if (bInputLocked || !bCanAct) return;
+	if (SkillQueue.Num() == 0) return;
+
+	GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
+	ClearSkillQueue();
+
+	UE_LOG(LogTemp, Warning, TEXT("모든 스킬 큐가 취소되었습니다."));
+
+	OnSkillQueueCleared_BPEvent.Broadcast();
+
+	LockInputTemporarily();
+}
+
+void APlayerCharacter::ExecuteNextSkillInQueue_UI()
+{
+	// 1. 큐에 남은 스킬이 없으면 턴 종료
+	if (SkillQueue.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 완료 ==="));
+		EndAction(); // ⬅️ "행동 3"의 턴 종료
+		return;
+	}
+
+	// 2. 큐의 맨 앞 스킬을 꺼냄 (FIFO)
+	USkillBase* SkillToFire = SkillQueue[0];
+	SkillQueue.RemoveAt(0);
+
+	// 3. 스킬 발동 (Print String) 및 쿨다운 적용
+	if (SkillToFire)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SKILL FIRED: %s"), *SkillToFire->SkillName.ToString());
+
+		// (중요) 이미 존재하는 쿨다운 함수를 호출합니다
+		ApplySkillCooldown(SkillToFire);
+	}
+
+	// 4. 큐에 스킬이 더 남아있다면 0.2초 뒤에 이 함수를 다시 호출
+	if (SkillQueue.Num() > 0)
+	{
+		GetWorld()->GetTimerManager().SetTimer(
+			SkillQueueTimerHandle,
+			this,
+			&APlayerCharacter::ExecuteNextSkillInQueue_UI,
+			SkillExecutionDelay, // 0.2초
+			false
+		);
+	}
+	else
+	{
+		// 5. 이것이 마지막 스킬이었으므로, 즉시 턴 종료
+		UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 완료 ==="));
+		EndAction(); // ⬅️ "행동 3"의 턴 종료
 	}
 }

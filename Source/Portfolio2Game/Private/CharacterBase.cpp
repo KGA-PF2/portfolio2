@@ -116,7 +116,7 @@ void ACharacterBase::GiveMoveAbilities()
 void ACharacterBase::StartAction()
 {
 	bCanAct = true;
-	ExecuteSkillQueue();
+	//ExecuteSkillQueue();
 }
 
 void ACharacterBase::EndAction()

@@ -115,6 +115,11 @@ void ABattleManager::StartPlayerTurn()
 	CurrentState = EBattleState::PlayerTurn;
 	if (PlayerRef)
 	{
+		// 1. (신규) 쿨타임 먼저 감소
+		PlayerRef->ReduceCooldowns();
+
+		// 2. (신규) C++ 이벤트 방송 -> UI가 이 신호를 받음
+		PlayerRef->OnTurnStart_BPEvent.Broadcast();
 		PlayerRef->StartAction();
 	}
 }
@@ -164,7 +169,7 @@ void ABattleManager::ExecuteEnemyActions()
 // 스폰 관련 (인덱스 기반 및 Possess 수정)
 // ──────────────────────────────
 
-void ABattleManager::SpawnPlayer()
+void ABattleManager::SpawnPlayer_Implementation()
 {
 	// (오류 수정) PlayerClass가 None이면 스폰을 중단합니다.
 	if (!PlayerClass)
@@ -227,7 +232,7 @@ void ABattleManager::SpawnPlayer()
 	}
 }
 
-void ABattleManager::SpawnEnemiesForRound()
+void ABattleManager::SpawnEnemiesForRound_Implementation()
 {
 	if (!EnemyClass || !GridInterface) return;
 
