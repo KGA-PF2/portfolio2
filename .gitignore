@@ -80,3 +80,9 @@ Content/*
 !Content/TeamShare/**
 !Content/TopDown/
 !Content/TopDown/**
+!Content/LevelPrototyping/
+!Content/LevelPrototyping/**
+!Content/Characters/
+!Content/Characters/**
+!Content/Cursor/
+!Content/Cursor/**

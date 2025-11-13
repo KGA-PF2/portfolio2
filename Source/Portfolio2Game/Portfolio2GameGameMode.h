@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,6 +13,12 @@ class APortfolio2GameGameMode : public AGameModeBase
 
 public:
 	APortfolio2GameGameMode();
+
+	/**
+	 * (신규) 맵의 모든 액터가 BeginPlay를 마친 후 호출되는 함수입니다.
+	 * BattleManager의 시작 시점으로 사용합니다.
+	 */
+	virtual void StartPlay() override;
 };
 
 
