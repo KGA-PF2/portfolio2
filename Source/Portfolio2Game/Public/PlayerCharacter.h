@@ -126,28 +126,30 @@ protected:
 	void Input_CancelSkills();
 
 	// 플레이어가 가진 전체 스킬
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skill")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill")
 	TArray<FPlayerSkillData> OwnedSkills;
 
 	// 현재 턴에 사용할 스킬 대기열
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill")
-	TArray<USkillBase*> SkillQueue;
+	TArray<int32> SkillQueueIndices;
 
 	// 스킬 선택 (UI에서 호출)
 	UFUNCTION(BlueprintCallable)
-	void SelectSkill(USkillBase* Skill);
+	void SelectSkill(int32 SkillIndex);
 
 	// 스킬 대기열 비우기 (턴 종료 후)
 	UFUNCTION(BlueprintCallable)
 	void ClearSkillQueue();
 
-	
-
 	// 특정 스킬을 쿨타임 상태로 전환
-	void ApplySkillCooldown(USkillBase* UsedSkill);
+	void ApplySkillCooldown(int32 SkillIndex);
+
+	/** 인덱스로 쿨타임 확인용 '다리' 함수 */
+	UFUNCTION(BlueprintPure, Category = "Skill")
+	int32 GetCurrentCooldownForSkill(int32 SkillIndex) const;
 
 	// 대기열 비워졌는지 확인
-	bool HasQueuedSkill() const { return SkillQueue.Num() > 0; }
+	bool HasQueuedSkill() const { return SkillQueueIndices.Num() > 0; }
 
 private:
 	// 입력 래퍼 함수 (기존과 동일)

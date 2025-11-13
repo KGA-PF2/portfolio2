@@ -139,34 +139,37 @@ void APlayerCharacter::UnlockInput()
 	bInputLocked = false;
 }
 
-void APlayerCharacter::SelectSkill(USkillBase* Skill)
+void APlayerCharacter::SelectSkill(int32 SkillIndex)
 {
-	// 1. (신규) 턴이 아니거나, 입력이 잠겼으면 무시
-	if (!bCanAct || bInputLocked)
+	if (!bCanAct || bInputLocked) return;
+	if (SkillQueueIndices.Num() >= 3) return; // 최대 3개
+
+	// (★수정★) 인덱스 유효성 검사
+	if (!OwnedSkills.IsValidIndex(SkillIndex))
 	{
+		UE_LOG(LogTemp, Error, TEXT("SelectSkill: 잘못된 인덱스(%d)입니다."), SkillIndex);
 		return;
 	}
 
-	// 2. (신규) 최대 3개까지만 선택 가능
-	if (SkillQueue.Num() >= 3)
+	// (★수정★) 쿨타임 검사 (인덱스 기반)
+	if (OwnedSkills[SkillIndex].CurrentCooldown > 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("스킬 큐가 가득 찼습니다 (최대 3개)."));
+		UE_LOG(LogTemp, Warning, TEXT("SelectSkill: %s (인덱스 %d)는 쿨타임 중입니다."), *OwnedSkills[SkillIndex].GetSkillName().ToString(), SkillIndex);
 		return;
 	}
 
-	// 3. (유지) 유효성 검사 및 중복 방지
-	if (!Skill || SkillQueue.Contains(Skill))
+	// (★수정★) 중복 검사 (인덱스 기반)
+	if (SkillQueueIndices.Contains(SkillIndex))
 		return;
 
-	// 4. (수정) UI 큐에만 추가
-	SkillQueue.Add(Skill);
+	// (★수정★) UI 큐에 '인덱스' 추가
+	SkillQueueIndices.Add(SkillIndex);
 
-	// 5. ✅ [신규] UI 위젯에 "스킬 추가됨" 이벤트 발송
-	OnSkillSelected_BPEvent.Broadcast(Skill);
+	// (유지) UI 큐 시각화용 이벤트는 SkillInfo 애셋을 보냄 (아이콘 표시용)
+	OnSkillSelected_BPEvent.Broadcast(OwnedSkills[SkillIndex].SkillInfo);
 
-	UE_LOG(LogTemp, Warning, TEXT("%s 스킬 선택됨 (현재 %d개)"), *Skill->SkillName.ToString(), SkillQueue.Num());
+	UE_LOG(LogTemp, Warning, TEXT("%s (인덱스 %d) 스킬 선택됨 (현재 %d개)"), *OwnedSkills[SkillIndex].GetSkillName().ToString(), SkillIndex, SkillQueueIndices.Num());
 
-	// 6. (유지) 턴 종료
 	LockInputTemporarily();
 	EndAction();
 }
@@ -174,7 +177,7 @@ void APlayerCharacter::SelectSkill(USkillBase* Skill)
 // 턴 종료 후 대기열 초기화
 void APlayerCharacter::ClearSkillQueue()
 {
-	SkillQueue.Empty();
+	SkillQueueIndices.Empty();
 }
 
 // 모든 스킬 쿨타임 감소
@@ -190,34 +193,37 @@ void APlayerCharacter::ReduceCooldowns()
 }
 
 // 스킬 사용 시 쿨타임 적용
-void APlayerCharacter::ApplySkillCooldown(USkillBase* UsedSkill)
+void APlayerCharacter::ApplySkillCooldown(int32 SkillIndex)
 {
-	for (auto& SkillData : OwnedSkills)
+	// (★수정★)
+	if (!OwnedSkills.IsValidIndex(SkillIndex))
 	{
-		if (SkillData.SkillInfo == UsedSkill)
-		{
-			SkillData.CurrentCooldown = SkillData.GetEffectiveTotalCooldown();
-			break;
-		}
+		UE_LOG(LogTemp, Error, TEXT("ApplySkillCooldown: 잘못된 인덱스(%d)입니다."), SkillIndex);
+		return;
 	}
+
+	FPlayerSkillData& SkillData = OwnedSkills[SkillIndex];
+	SkillData.CurrentCooldown = SkillData.GetEffectiveTotalCooldown();
+
+	UE_LOG(LogTemp, Warning, TEXT("ApplyCooldown: %s (인덱스 %d)에 쿨타임 %d 적용됨"), *SkillData.GetSkillName().ToString(), SkillIndex, SkillData.CurrentCooldown);
 }
 
 void APlayerCharacter::Input_ExecuteSkills()
 {
 	if (bInputLocked || !bCanAct) return; // 행동 불가시 무시
-	if (SkillQueue.Num() == 0) return; // 큐가 비었으면 무시
+	if (SkillQueueIndices.Num() == 0) return; // 큐가 비었으면 무시
 
 	LockInputTemporarily(); // 입력 잠금.
 
 	UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 시작 ==="));
-	OnSkillQueueCleared_BPEvent.Broadcast();
+
 	ExecuteNextSkillInQueue_UI(); // 0.2초 딜레이 시퀀스 시작
 }
 
 void APlayerCharacter::Input_CancelSkills()
 {
 	if (bInputLocked || !bCanAct) return;
-	if (SkillQueue.Num() == 0) return;
+	if (SkillQueueIndices.Num() == 0) return;
 
 	GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
 	ClearSkillQueue();
@@ -231,29 +237,55 @@ void APlayerCharacter::Input_CancelSkills()
 
 void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 {
-	// 1. 큐에 남은 스킬이 없으면 턴 종료
-	if (SkillQueue.Num() == 0)
+	// 1. 큐에 남은 인덱스가 없으면 턴 종료
+	if (SkillQueueIndices.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 완료 ==="));
-		EndAction(); // ⬅️ "행동 3"의 턴 종료
+		GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
+		OnSkillQueueCleared_BPEvent.Broadcast();
+		EndAction();
 		return;
 	}
 
-	// 2. 큐의 맨 앞 스킬을 꺼냄 (FIFO)
-	USkillBase* SkillToFire = SkillQueue[0];
-	SkillQueue.RemoveAt(0);
+	// 2. 큐의 맨 앞 '인덱스'를 꺼냄
+	int32 SkillIndexToFire = SkillQueueIndices[0];
+	SkillQueueIndices.RemoveAt(0);
 
-	// 3. 스킬 발동 (Print String) 및 쿨다운 적용
-	if (SkillToFire)
+	// (안전 장치)
+	if (!OwnedSkills.IsValidIndex(SkillIndexToFire))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("SKILL FIRED: %s"), *SkillToFire->SkillName.ToString());
-
-		// (중요) 이미 존재하는 쿨다운 함수를 호출합니다
-		ApplySkillCooldown(SkillToFire);
+		UE_LOG(LogTemp, Error, TEXT("ExecuteNextSkillInQueue_UI: 큐에 잘못된 인덱스(%d)가 있었습니다."), SkillIndexToFire);
+		// 큐에 스킬이 더 남아있으면 다음 것을 시도
+		if (SkillQueueIndices.Num() > 0)
+		{
+			// (재귀 호출이 아닌 타이머 재설정)
+			GetWorld()->GetTimerManager().SetTimer(
+				SkillQueueTimerHandle,
+				this,
+				&APlayerCharacter::ExecuteNextSkillInQueue_UI,
+				SkillExecutionDelay,
+				false
+			);
+		}
+		else
+		{
+			// 마지막 스킬이었으면 턴 종료
+			GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
+			EndAction();
+		}
+		return;
 	}
 
-	// 4. 큐에 스킬이 더 남아있다면 0.2초 뒤에 이 함수를 다시 호출
-	if (SkillQueue.Num() > 0)
+	// 3. 스킬 발동 및 쿨다운 적용
+	FPlayerSkillData& SkillData = OwnedSkills[SkillIndexToFire];
+
+	UE_LOG(LogTemp, Warning, TEXT("SKILL FIRED: %s (인덱스 %d)"), *SkillData.GetSkillName().ToString(), SkillIndexToFire);
+
+	// 인덱스로 쿨다운 함수 호출
+	ApplySkillCooldown(SkillIndexToFire);
+
+	// 4. 큐(SkillQueueIndices)에 스킬이 더 남아있다면 0.2초 뒤에 이 함수를 다시 호출
+	if (SkillQueueIndices.Num() > 0)
 	{
 		GetWorld()->GetTimerManager().SetTimer(
 			SkillQueueTimerHandle,
@@ -267,6 +299,17 @@ void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 	{
 		// 5. 이것이 마지막 스킬이었으므로, 즉시 턴 종료
 		UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 완료 ==="));
-		EndAction(); // ⬅️ "행동 3"의 턴 종료
+		GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
+		OnSkillQueueCleared_BPEvent.Broadcast();
+		EndAction();
 	}
+}
+
+int32 APlayerCharacter::GetCurrentCooldownForSkill(int32 SkillIndex) const
+{
+	if (!OwnedSkills.IsValidIndex(SkillIndex))
+	{
+		return -1; // 잘못된 인덱스
+	}
+	return OwnedSkills[SkillIndex].CurrentCooldown;
 }
