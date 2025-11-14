@@ -14,6 +14,9 @@ class ABattleManager;
 class UGameplayAbility;
 class UGA_Move; // (신규) GA_Move 클래스 전방 선언
 
+// HP 변경을 BP_HPBarActor에게 알릴 델리게이트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHealthChangedSignature, int32, NewHealth, int32, NewMaxHealth);
+
 UENUM(BlueprintType)
 enum class EGridDirection : uint8
 {
@@ -47,6 +50,16 @@ public:
 	TObjectPtr<UBaseAttributeSet> Attributes;
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override { return AbilitySystem; }
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "UI")
+	TSubclassOf<AActor> HPBarActorClass;
+
+	UPROPERTY(BlueprintReadWrite, Category = "UI")
+	TObjectPtr<AActor> HPBarActor;
+
+	// HP 변경 델리게이트 인스턴스
+	UPROPERTY(BlueprintAssignable, Category = "Attributes")
+	FOnHealthChangedSignature OnHealthChanged;
 
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "GAS")
