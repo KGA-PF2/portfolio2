@@ -236,16 +236,43 @@ void ABattleManager::SpawnEnemiesForRound_Implementation()
 {
 	if (!EnemyClass || !GridInterface) return;
 
+	// 1. 스폰 가능한 위치 목록을 복사합니다. (원본 보존)
+	TArray<int32> AvailableSpawnIndices = EnemySpawnIndices;
 
-	// (수정) EnemySpawnIndices 배열 사용
-	for (const int32 SpawnIndex : EnemySpawnIndices)
+	// 2. 스폰할 적의 수 (2마리)
+	int32 NumEnemiesToSpawn = 2;
+
+	// (안전 장치) 스폰 가능한 칸보다 많이 스폰하려고 하면, 가능한 만큼만 스폰
+	int32 MaxSpawns = FMath::Min(NumEnemiesToSpawn, AvailableSpawnIndices.Num());
+
+	// 3. 랜덤 스폰 루프
+	for (int32 i = 0; i < MaxSpawns; ++i)
 	{
+		if (AvailableSpawnIndices.Num() == 0) break;
+
+		// 4. 랜덤 인덱스 뽑기
+		int32 RandomArrayIndex = FMath::RandRange(0, AvailableSpawnIndices.Num() - 1);
+		int32 SpawnIndex = AvailableSpawnIndices[RandomArrayIndex];
+
+		// 5. 뽑은 위치는 목록에서 제거 (중복 방지)
+		AvailableSpawnIndices.RemoveAt(RandomArrayIndex);
+
 		FIntPoint SpawnCoord = GetGridCoordFromIndex(SpawnIndex);
 		FVector SpawnLocation = GetWorldLocation(SpawnCoord);
-		SpawnLocation.Z += (EnemyClass->GetDefaultObject<AEnemyCharacter>())->SpawnZOffset;
 
+		float ZOffset = EnemyClass->GetDefaultObject<AEnemyCharacter>()->SpawnZOffset;
+		SpawnLocation.Z += ZOffset;
 
-		AEnemyCharacter* NewEnemy = GetWorld()->SpawnActor<AEnemyCharacter>(EnemyClass, SpawnLocation, FRotator::ZeroRotator);
+		// 위치가 겹쳐도 강제로 스폰
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		AEnemyCharacter* NewEnemy = GetWorld()->SpawnActor<AEnemyCharacter>(
+			EnemyClass,
+			SpawnLocation,
+			FRotator::ZeroRotator,
+			SpawnParams
+		);
 
 		if (NewEnemy)
 		{
@@ -256,9 +283,6 @@ void ABattleManager::SpawnEnemiesForRound_Implementation()
 	}
 }
 
-// ──────────────────────────────
-// 유틸리티 (수정됨)
-// ──────────────────────────────
 
 FVector ABattleManager::GridToWorld(FIntPoint GridPos) const
 {

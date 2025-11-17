@@ -51,6 +51,10 @@ public:
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override { return AbilitySystem; }
 
+	// HP바 높이 조절용 변수
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	float HPBarZOffset = -150.0f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "UI")
 	TSubclassOf<AActor> HPBarActorClass;
 

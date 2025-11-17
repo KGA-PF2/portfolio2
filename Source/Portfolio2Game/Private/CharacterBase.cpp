@@ -30,17 +30,53 @@ void ACharacterBase::BeginPlay()
 	if (AbilitySystem)
 	{
 		AbilitySystem->InitAbilityActorInfo(this, this);
-
-		// ❌ (오류 수정) FOnAttributeChangeData 델리게이트 바인딩 로직을 C++에서 제거합니다.
-		// (이 작업은 BP_CharacterBase의 EventBeginPlay에서 수행해야 합니다.)
 	}
-
 
 	if (HasAuthority())
 	{
 		InitAttributes();
 		GiveAllSkills();
 		GiveMoveAbilities();
+	}
+
+
+	// 1. HPBarActorClass가 설정되어 있는지 확인
+	if (HPBarActorClass)
+	{
+		// 2. 스폰 위치 계산
+		FVector SpawnLocation = GetActorLocation();
+
+		// 3. HP바 액터 스폰
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		SpawnParams.Owner = this;
+
+		HPBarActor = GetWorld()->SpawnActor<AActor>(HPBarActorClass, SpawnLocation, FRotator::ZeroRotator, SpawnParams);
+
+		// 4. 스폰 성공 및 AttributeSet 유효성 확인
+		if (HPBarActor)
+		{
+			HPBarActor->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
+
+			if (Attributes)
+			{
+				FScriptDelegate Delegate;
+				Delegate.BindUFunction(HPBarActor, FName("HandleHealthChanged"));
+
+				if (!OnHealthChanged.Contains(Delegate))
+				{
+					OnHealthChanged.Add(Delegate);
+				}
+
+				int32 CurrentHP = FMath::RoundToInt(Attributes->GetHealth_BP());
+				int32 MaxHP = FMath::RoundToInt(Attributes->GetMaxHealth_BP());
+				OnHealthChanged.Broadcast(CurrentHP, MaxHP);
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s: HPBarActorClass 설정되지 않음"), *GetName());
 	}
 }
 

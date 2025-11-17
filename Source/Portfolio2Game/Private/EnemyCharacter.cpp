@@ -71,6 +71,7 @@ void AEnemyCharacter::MoveUp()
     GridCoord.X += Dir; // 전방 한 칸
 
     FVector NewLoc = BattleManagerRef->GetWorldLocation(GridCoord);
+    NewLoc.Z += SpawnZOffset;
     SetActorLocation(NewLoc);
 
     UE_LOG(LogTemp, Warning, TEXT("%s moves to (%d,%d)"), *GetName(), GridCoord.X, GridCoord.Y);
