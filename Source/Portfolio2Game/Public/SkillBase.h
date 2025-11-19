@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "Particles/ParticleSystem.h"
 #include "SkillBase.generated.h"
 
 UCLASS(BlueprintType)
@@ -23,6 +24,18 @@ public:
     /** WBP_SkillQueue가 참조할 스킬 아이콘 */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill")
     TObjectPtr<UTexture2D> SkillIcon;
+
+    /** 스킬 사용 시 재생할 몽타주 (AnimNotify로 타격 시점 조절) */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill|Visual")
+    TObjectPtr<UAnimMontage> SkillMontage;
+
+    /** 타격 지점에 생성될 이펙트 (Cascade Particle System) */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill|Visual")
+    TObjectPtr<UParticleSystem> TileEffect;
+
+    /** 이펙트 생성 위치 미세 조정 (예: 바닥보다 살짝 위 Z=50) */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill|Visual")
+    FVector EffectOffset = FVector(0, 0, 50.0f);
 
     // ───────── 공격 범위 (격자 상대좌표) ─────────
     // 내 위치(0,0) 기준 상대좌표 — 격자 시스템 계산에 사용

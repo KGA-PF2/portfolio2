@@ -70,6 +70,9 @@ void ACharacterBase::BeginPlay()
 			OnHealthChanged.Add(Delegate);
 		}
 	}
+
+	// 게임 시작 시 기본 방향(Right)으로 정렬
+	RotateToDirection(EGridDirection::Right, false);
 }
 
 
@@ -97,6 +100,7 @@ void ACharacterBase::GiveAllSkills()
 {
 	if (AbilitySystem && HasAuthority())
 	{
+		// 1. 기존 스킬 리스트 등록 (유지)
 		for (TSubclassOf<UGameplayAbility> SkillClass : SkillList)
 		{
 			if (SkillClass)
@@ -104,6 +108,14 @@ void ACharacterBase::GiveAllSkills()
 				FGameplayAbilitySpec AbilitySpec(SkillClass, 1, 0, this);
 				AbilitySystem->GiveAbility(AbilitySpec);
 			}
+		}
+
+		// 2. [★추가★] 공용 공격 어빌리티 등록! (이게 빠져서 에러가 난 것)
+		if (GenericAttackAbilityClass)
+		{
+			// InputID는 0(None)으로 해도 됨 (태그나 이벤트로 발동하니까)
+			FGameplayAbilitySpec AttackSpec(GenericAttackAbilityClass, 1, 0, this);
+			AbilitySystem->GiveAbility(AttackSpec);
 		}
 	}
 }
@@ -138,6 +150,76 @@ void ACharacterBase::GiveMoveAbilities()
 		}
 	}
 }
+
+
+// 회전
+
+FRotator ACharacterBase::GetRotationFromEnum(EGridDirection Dir) const
+{
+	// 언리얼 월드 좌표계 기준 (X가 전방일 때)
+	// 상황에 따라(카메라 각도 등) 각도는 수정 필요할 수 있음
+	switch (Dir)
+	{
+	case EGridDirection::Right: return FRotator(0, 0, 0);      // X+
+	case EGridDirection::Left:  return FRotator(0, 180, 0);    // X-
+	case EGridDirection::Up:    return FRotator(0, 270, 0);    // Y- (화면 위쪽)
+	case EGridDirection::Down:  return FRotator(0, 90, 0);     // Y+ (화면 아래쪽)
+	}
+	return FRotator::ZeroRotator;
+}
+
+void ACharacterBase::RequestRotation(EGridDirection NewDir, UAnimMontage* MontageToPlay)
+{
+	// 1. 일단 턴 행동 시작으로 간주 (입력 잠금 등)
+	// (PlayerCharacter 등에서 이미 잠금 처리했겠지만 확실하게)
+	bCanAct = false;
+	PendingRotationDirection = NewDir;
+	FacingDirection = NewDir; // 논리적 방향은 미리 업데이트 (UI 등 반영)
+
+	// 2. 애니메이션이 유효한지 체크
+	if (MontageToPlay && GetMesh()->GetAnimInstance())
+	{
+		// A. 애니메이션 재생
+		float Duration = PlayAnimMontage(MontageToPlay);
+
+		if (Duration > 0.f)
+		{
+			// B. 종료 델리게이트 연결 (애니메이션 끝나면 FinalizeRotation 실행)
+			FOnMontageEnded EndDelegate;
+			EndDelegate.BindUObject(this, &ACharacterBase::FinalizeRotation);
+			GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
+
+			// 로그
+			// UE_LOG(LogTemp, Log, TEXT("Rotation Anim Started: %s"), *MontageToPlay->GetName());
+			return; // 여기서 리턴하면 FinalizeRotation이 나중에 호출됨
+		}
+	}
+
+	// 3. 애니메이션이 없거나 재생 실패 시 -> 즉시 회전
+	FinalizeRotation(nullptr, false);
+}
+
+void ACharacterBase::FinalizeRotation(UAnimMontage* Montage, bool bInterrupted)
+{
+	// 1. 메쉬를 실제 방향으로 회전시킴 (Snap)
+	SetActorRotation(GetRotationFromEnum(PendingRotationDirection));
+
+	// 2. 턴 종료 처리
+	// (EndAction 내부에서 BattleManager에게 턴 넘김을 알림)
+	EndAction();
+
+	// UE_LOG(LogTemp, Log, TEXT("Rotation Finalized."));
+}
+
+void ACharacterBase::RotateToDirection(EGridDirection NewDir, bool bConsumeTurn)
+{
+	// 외부에서 강제로 돌릴 때(초기화 등)를 위해 남겨둠
+	FacingDirection = NewDir;
+	SetActorRotation(GetRotationFromEnum(FacingDirection));
+
+	if (bConsumeTurn) EndAction();
+}
+
 
 
 // ───────── 턴 관리 ─────────
@@ -241,10 +323,7 @@ void ACharacterBase::OnHealthAttributeChanged(const FOnAttributeChangeData& Data
 	OnHealthChanged.Broadcast((int32)NewHealth, (int32)MaxHealth);
 }
 
-void ACharacterBase::Turn(bool bRight)
-{
-	bFacingRight = bRight;
-}
+
 
 /**
  * (신규) GridIndex 변수를 반환합니다.

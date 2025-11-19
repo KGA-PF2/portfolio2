@@ -130,14 +130,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Skill")
 	void CancelSkillQueue();
 
+	// 공용 공격 어빌리티 BP 클래스
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Skill")
+	TSubclassOf<UGameplayAbility> GenericAttackAbilityClass;
+
 	// ───────── 이동/회전 (수정됨) ─────────
 public:
 	/** (수정됨) 캐릭터의 논리적 위치(좌표와 인덱스)를 업데이트합니다. */
 	UFUNCTION(BlueprintCallable, Category = "Move")
 	void MoveToCell(FIntPoint TargetCoord, int32 TargetIndex);
 
-	UFUNCTION(BlueprintCallable, Category = "Move")
-	void Turn(bool bRight);
+
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Move")
 	void PlayMoveAnim();
@@ -151,8 +154,40 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid", meta = (ExposeOnSpawn = "true"))
 	int32 GridIndex = 0;
 
+
+	// 회전 관련
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Rotation")
+	TObjectPtr<UAnimMontage> Montage_RotateCCW; // Q (반시계)
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Rotation")
+	TObjectPtr<UAnimMontage> Montage_RotateCW;  // E (시계)
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Rotation")
+	TObjectPtr<UAnimMontage> Montage_Rotate180; // R (뒤로)
+
+	/*UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid")
+	bool bFacingRight = true;*/
+
+	// 회전 대기용 변수
+	EGridDirection PendingRotationDirection;
+
+	// [신규] 회전 요청 함수 (애니메이션 체크 로직 포함)
+	void RequestRotation(EGridDirection NewDir, UAnimMontage* MontageToPlay);
+
+	// [신규] 실제 회전 적용 및 턴 종료 (애니메이션 종료 후 호출)
+	UFUNCTION()
+	void FinalizeRotation(UAnimMontage* Montage, bool bInterrupted);
+
+	// [신규] 현재 바라보고 있는 방향 (기본값: Right)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid")
-	bool bFacingRight = true;
+	EGridDirection FacingDirection = EGridDirection::Right;
+
+	// [신규] 해당 방향으로 즉시 회전 (턴 소모 포함)
+	UFUNCTION(BlueprintCallable, Category = "Move")
+	void RotateToDirection(EGridDirection NewDir, bool bConsumeTurn = true);
+
+	// [신규] 유틸리티: 방향 Enum -> 월드 회전값(Rotator) 변환
+	FRotator GetRotationFromEnum(EGridDirection Dir) const;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Status")
 	bool bDead = false;

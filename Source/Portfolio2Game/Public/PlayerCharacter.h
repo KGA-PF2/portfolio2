@@ -107,6 +107,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
 	TObjectPtr<UInputAction> IA_MoveRight;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_RotateCCW; // Q (반시계)
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_RotateCW;  // E (시계)
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_Rotate180; // R (뒤로)
+
 	/** (신규) Enter키 (스킬 큐 실행) (에디터에서 할당) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
 	TObjectPtr<UInputAction> IA_ExecuteSkills;
@@ -124,6 +133,10 @@ protected:
 
 	/** 스킬 큐 취소 (ESC) */
 	void Input_CancelSkills();
+
+	void Input_RotateCCW();
+	void Input_RotateCW();
+	void Input_Rotate180();
 
 	// 플레이어가 가진 전체 스킬
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill")

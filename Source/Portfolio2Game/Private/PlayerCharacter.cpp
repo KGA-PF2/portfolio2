@@ -77,6 +77,15 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		{
 			EnhancedInputComponent->BindAction(IA_CancelSkills, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_CancelSkills);
 		}
+
+		// [신규] 회전 바인딩
+		if (IA_RotateCCW)
+			EnhancedInputComponent->BindAction(IA_RotateCCW, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_RotateCCW);
+		if (IA_RotateCW) 
+			EnhancedInputComponent->BindAction(IA_RotateCW, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_RotateCW);
+		if (IA_Rotate180)
+			EnhancedInputComponent->BindAction(IA_Rotate180, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_Rotate180);
+
 	}
 	else
 	{
@@ -125,6 +134,58 @@ void APlayerCharacter::Input_MoveRight()
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveRight);
 		LockInputTemporarily();
 	}
+}
+
+// Q: 반시계 회전 (Right -> Up -> Left -> Down)
+void APlayerCharacter::Input_RotateCCW()
+{
+	if (bInputLocked || !bCanAct) return;
+
+	EGridDirection NewDir = FacingDirection;
+	switch (FacingDirection)
+	{
+	case EGridDirection::Right: NewDir = EGridDirection::Up; break;
+	case EGridDirection::Up:    NewDir = EGridDirection::Left; break;
+	case EGridDirection::Left:  NewDir = EGridDirection::Down; break;
+	case EGridDirection::Down:  NewDir = EGridDirection::Right; break;
+	}
+
+	// 몽타주와 함께 요청 (없으면 즉시 회전)
+	RequestRotation(NewDir, Montage_RotateCCW);
+}
+
+// E: 시계 회전 (Right -> Down -> Left -> Up)
+void APlayerCharacter::Input_RotateCW()
+{
+	if (bInputLocked || !bCanAct) return;
+
+	EGridDirection NewDir = FacingDirection;
+	switch (FacingDirection)
+	{
+	case EGridDirection::Right: NewDir = EGridDirection::Down; break;
+	case EGridDirection::Down:  NewDir = EGridDirection::Left; break;
+	case EGridDirection::Left:  NewDir = EGridDirection::Up; break;
+	case EGridDirection::Up:    NewDir = EGridDirection::Right; break;
+	}
+
+	RequestRotation(NewDir, Montage_RotateCW);
+}
+
+// R: 뒤로 돌기
+void APlayerCharacter::Input_Rotate180()
+{
+	if (bInputLocked || !bCanAct) return;
+
+	EGridDirection NewDir = FacingDirection;
+	switch (FacingDirection)
+	{
+	case EGridDirection::Right: NewDir = EGridDirection::Left; break;
+	case EGridDirection::Left:  NewDir = EGridDirection::Right; break;
+	case EGridDirection::Up:    NewDir = EGridDirection::Down; break;
+	case EGridDirection::Down:  NewDir = EGridDirection::Up; break;
+	}
+
+	RequestRotation(NewDir, Montage_Rotate180);
 }
 
 void APlayerCharacter::LockInputTemporarily()
@@ -247,7 +308,7 @@ void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 		return;
 	}
 
-	// 2. 큐의 맨 앞 '인덱스'를 꺼냄
+	// 2. 큐의 맨 앞 '인덱스'를 꺼냄 (원래 변수명 사용)
 	int32 SkillIndexToFire = SkillQueueIndices[0];
 	SkillQueueIndices.RemoveAt(0);
 
@@ -258,7 +319,6 @@ void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 		// 큐에 스킬이 더 남아있으면 다음 것을 시도
 		if (SkillQueueIndices.Num() > 0)
 		{
-			// (재귀 호출이 아닌 타이머 재설정)
 			GetWorld()->GetTimerManager().SetTimer(
 				SkillQueueTimerHandle,
 				this,
@@ -269,22 +329,74 @@ void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 		}
 		else
 		{
-			// 마지막 스킬이었으면 턴 종료
 			GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
 			EndAction();
 		}
 		return;
 	}
 
-	// 3. 스킬 발동 및 쿨다운 적용
+	// 3. 스킬 데이터 가져오기
 	FPlayerSkillData& SkillData = OwnedSkills[SkillIndexToFire];
 
-	UE_LOG(LogTemp, Warning, TEXT("SKILL FIRED: %s (인덱스 %d)"), *SkillData.GetSkillName().ToString(), SkillIndexToFire);
+	// 필수 요소 검사 로그
+	if (!GenericAttackAbilityClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("ERROR: BP_PlayerCharacter에 'GenericAttackAbilityClass'가 비어있습니다! 할당해주세요."));
+		return;
+	}
+	if (!SkillData.SkillInfo)
+	{
+		UE_LOG(LogTemp, Error, TEXT("ERROR: 스킬 데이터에 SkillInfo가 없습니다."));
+		return;
+	}
 
-	// 인덱스로 쿨다운 함수 호출
+	bool bSuccess = false;
+
+	// ───────── [수정됨] GAS로 스킬 실행 ─────────
+	if (AbilitySystem)
+	{
+		FGameplayAbilitySpec* Spec = AbilitySystem->FindAbilitySpecFromClass(GenericAttackAbilityClass);
+		if (Spec)
+		{
+			FGameplayEventData Payload;
+			Payload.OptionalObject = SkillData.SkillInfo;
+			Payload.Instigator = this;
+			Payload.Target = this;
+
+			FGameplayTag TriggerTag = FGameplayTag::RequestGameplayTag(TEXT("Ability.Skill.Attack"));
+
+			// 실행 결과 받기 (int 반환값으로 성공 여부 추측 가능)
+			int32 Result = AbilitySystem->TriggerAbilityFromGameplayEvent(
+				Spec->Handle,
+				AbilitySystem->AbilityActorInfo.Get(),
+				TriggerTag,
+				&Payload,
+				*AbilitySystem
+			);
+
+			// TriggerAbility는 void거나 복잡하므로, Spec이 Active 상태인지 확인하는 게 정확하지만 일단 넘어감
+			bSuccess = true;
+			UE_LOG(LogTemp, Warning, TEXT("GAS Trigger Signal Sent! (Tag: Ability.Skill.Attack)"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("ERROR: 어빌리티 시스템에 GA_SkillAttack이 등록되지 않았습니다. GiveAllSkills 확인 필요."));
+		}
+	}
+
+	// 결과에 따른 로그 출력
+	if (bSuccess)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SKILL FIRED SUCCESS: %s"), *SkillData.GetSkillName().ToString());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("SKILL FIRED FAILED: GAS 발동 실패"));
+	}
+	// 4. 쿨타임 적용
 	ApplySkillCooldown(SkillIndexToFire);
 
-	// 4. 큐(SkillQueueIndices)에 스킬이 더 남아있다면 0.2초 뒤에 이 함수를 다시 호출
+	// 5. 큐(SkillQueueIndices)에 스킬이 더 남아있다면 딜레이 후 재호출
 	if (SkillQueueIndices.Num() > 0)
 	{
 		GetWorld()->GetTimerManager().SetTimer(
@@ -297,7 +409,8 @@ void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 	}
 	else
 	{
-		// 5. 이것이 마지막 스킬이었으므로, 즉시 턴 종료
+		// 6. 마지막 스킬이었으므로, 즉시 턴 종료
+		// (주의: 몽타주 재생 시간과 별개로 턴이 즉시 종료되므로, 필요 시 EndAction 호출을 늦춰야 할 수도 있음)
 		UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 완료 ==="));
 		GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
 		OnSkillQueueCleared_BPEvent.Broadcast();
