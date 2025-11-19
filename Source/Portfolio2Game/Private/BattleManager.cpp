@@ -202,33 +202,37 @@ void ABattleManager::SpawnPlayer_Implementation()
 	// 플레이어 스폰 높이 보정 (BP에서 설정한 값 사용)
 	SpawnLocation.Z += (PlayerClass->GetDefaultObject<APlayerCharacter>())->SpawnZOffset;
 
-	// 5. 스폰
-	PlayerRef = GetWorld()->SpawnActor<APlayerCharacter>(PlayerClass, SpawnLocation, FRotator::ZeroRotator);
+	FTransform SpawnTransform(FRotator::ZeroRotator, SpawnLocation);
+
+	// 5. 지연 스폰(Deferred Spawn) 사용
+	PlayerRef = GetWorld()->SpawnActorDeferred<APlayerCharacter>(
+		PlayerClass,
+		SpawnTransform,
+		nullptr,
+		nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn
+	);
+
 	if (PlayerRef)
 	{
-		// 6. 캐릭터의 논리적 위치(좌표와 인덱스) 둘 다 설정
+		// 6. BeginPlay가 실행되기 "전"에 데이터 주입
 		PlayerRef->GridCoord = SpawnCoord;
-		PlayerRef->GridIndex = PlayerSpawnIndex;
+		PlayerRef->GridIndex = PlayerSpawnIndex; // 이제 BeginPlay에서 올바른 인덱스를 참조
 
-		// 7. (가장 중요) 컨트롤러가 새로 스폰된 폰에 즉시 빙의(Possess)
-		//    이 코드가 없으면 "아무것도 안 나오는" 상태가 됩니다.
+		// 스폰 마무리 (이때 BeginPlay 호출됨 -> HP바 갱신 로직 작동)
+		UGameplayStatics::FinishSpawningActor(PlayerRef, SpawnTransform);
+
+		// 7. 빙의 (Possess)
 		if (PC)
 		{
 			PC->Possess(PlayerRef);
 		}
+
+		// 카메라 설정 (기존 코드 유지)
 		if (FieldCamera)
 		{
-			// SetViewTargetWithBlend의 두 번째 인자(0.f)는 즉시 변경하라는 의미입니다.
 			PC->SetViewTargetWithBlend(FieldCamera, 0.f);
 		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("BattleManager: 'FieldCamera'가 None입니다! 레벨의 BattleManager 디테일 패널에서 맵에 배치된 카메라를 연결하세요."));
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("BattleManager: SpawnActor<APlayerCharacter>가 실패했습니다. PlayerClass가 유효한지 확인하세요."));
 	}
 }
 
@@ -236,48 +240,42 @@ void ABattleManager::SpawnEnemiesForRound_Implementation()
 {
 	if (!EnemyClass || !GridInterface) return;
 
-	// 1. 스폰 가능한 위치 목록을 복사합니다. (원본 보존)
 	TArray<int32> AvailableSpawnIndices = EnemySpawnIndices;
-
-	// 2. 스폰할 적의 수 (2마리)
 	int32 NumEnemiesToSpawn = 2;
-
-	// (안전 장치) 스폰 가능한 칸보다 많이 스폰하려고 하면, 가능한 만큼만 스폰
 	int32 MaxSpawns = FMath::Min(NumEnemiesToSpawn, AvailableSpawnIndices.Num());
 
-	// 3. 랜덤 스폰 루프
 	for (int32 i = 0; i < MaxSpawns; ++i)
 	{
 		if (AvailableSpawnIndices.Num() == 0) break;
 
-		// 4. 랜덤 인덱스 뽑기
 		int32 RandomArrayIndex = FMath::RandRange(0, AvailableSpawnIndices.Num() - 1);
 		int32 SpawnIndex = AvailableSpawnIndices[RandomArrayIndex];
-
-		// 5. 뽑은 위치는 목록에서 제거 (중복 방지)
 		AvailableSpawnIndices.RemoveAt(RandomArrayIndex);
 
 		FIntPoint SpawnCoord = GetGridCoordFromIndex(SpawnIndex);
 		FVector SpawnLocation = GetWorldLocation(SpawnCoord);
-
 		float ZOffset = EnemyClass->GetDefaultObject<AEnemyCharacter>()->SpawnZOffset;
 		SpawnLocation.Z += ZOffset;
 
-		// 위치가 겹쳐도 강제로 스폰
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		// FTransform 생성
+		FTransform SpawnTransform(FRotator::ZeroRotator, SpawnLocation);
 
-		AEnemyCharacter* NewEnemy = GetWorld()->SpawnActor<AEnemyCharacter>(
+		AEnemyCharacter* NewEnemy = GetWorld()->SpawnActorDeferred<AEnemyCharacter>(
 			EnemyClass,
-			SpawnLocation,
-			FRotator::ZeroRotator,
-			SpawnParams
+			SpawnTransform,
+			nullptr,
+			nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn
 		);
 
 		if (NewEnemy)
 		{
+			// BeginPlay 실행 "전"에 위치 정보 주입!
 			NewEnemy->GridCoord = SpawnCoord;
 			NewEnemy->GridIndex = SpawnIndex;
+
+			UGameplayStatics::FinishSpawningActor(NewEnemy, SpawnTransform);
+
 			Enemies.Add(NewEnemy);
 		}
 	}

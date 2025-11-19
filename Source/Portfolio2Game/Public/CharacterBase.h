@@ -55,6 +55,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
 	float HPBarZOffset = -150.0f;
 
+	// HP바 세로 길이 (두께) 조절용 변수
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	float HPBarHeight = 15.0f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "UI")
 	TSubclassOf<AActor> HPBarActorClass;
 
@@ -64,6 +68,16 @@ public:
 	// HP 변경 델리게이트 인스턴스
 	UPROPERTY(BlueprintAssignable, Category = "Attributes")
 	FOnHealthChangedSignature OnHealthChanged;
+
+	//CachedGridIndex 변수 추가(이동 전 위치 기억용).
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Grid")
+	int32 CachedGridIndex = -1;
+
+	UFUNCTION()
+	void OnHealthChanged_Wrapper(int32 CurrentHP, int32 MaxHP);
+
+	// GAS의 체력 변경 감지용 함수 선언
+	virtual void OnHealthAttributeChanged(const FOnAttributeChangeData& Data);
 
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "GAS")

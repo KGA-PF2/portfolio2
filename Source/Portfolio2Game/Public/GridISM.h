@@ -1,4 +1,5 @@
 ﻿#pragma once
+
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GridDataInterface.h"
@@ -7,26 +8,53 @@
 UCLASS()
 class PORTFOLIO2GAME_API AGridISM : public AActor, public IGridDataInterface
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    AGridISM();
+	AGridISM();
 
-    // BP에서 값 세팅
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") int32  GridWidth;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") int32  GridHeight;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") double GridSizeX;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") double GridSizeY;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") FVector GridLocationOffset;
+protected:
+	virtual void BeginPlay() override;
 
-    // 인터페이스 구현 (_Implementation) — 시그니처 ‘그대로’, override OK
-    virtual int32   GetGridWidth_Implementation() const override { return GridWidth; }
-    virtual int32   GetGridHeight_Implementation() const override { return GridHeight; }
-    virtual double  GetGridSizeX_Implementation() const override { return GridSizeX; }
-    virtual double  GetGridSizeY_Implementation() const override { return GridSizeY; }
-    virtual FVector GetGridLocationOffset_Implementation() const override { return GridLocationOffset; }
+public:
+	// ───────── 그리드 설정 ─────────
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") int32  GridWidth = 7;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") int32  GridHeight = 5;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") double GridSizeX = 100.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") double GridSizeY = 100.0;
 
-    // 🔴 여기서는 const 제거 (헤더와 동일해야 함)
-    virtual FIntPoint GetGridCoordFromIndex_Implementation(int32 Index) override;
-    virtual int32     GetGridIndexFromCoord_Implementation(FIntPoint Coord) override;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") FVector GridLocationOffset;
+
+	// ───────── HP바 설정 ─────────
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
+	TSubclassOf<AActor> HPBarActorClass;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Grid|UI")
+	TArray<TObjectPtr<AActor>> HPBarPool;
+
+	// [기존 유지] HP바 높이 오프셋
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
+	float HPBarZOffset = 0.3f;
+
+	// [기존 유지] HP바 위치 비율 (기본값 -0.45: 하단)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
+	float HPBarYOffsetRatio = -0.45f;
+
+	// [신규] 위의 기본 계산 결과에 "추가로" 더할 XYZ 값 (미세 조정용)
+	// 기본값 (0,0,0)이면 기존 위치와 완전히 동일합니다.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
+	FVector HPBarAdditionalOffset = FVector::ZeroVector;
+
+	// ───────── 기능 ─────────
+	UFUNCTION(BlueprintCallable, Category = "Grid|UI")
+	void UpdateTileHPBar(int32 Index, bool bShow, int32 CurrentHP = 0, int32 MaxHP = 0);
+
+	// 인터페이스 구현
+	virtual int32   GetGridWidth_Implementation() const override { return GridWidth; }
+	virtual int32   GetGridHeight_Implementation() const override { return GridHeight; }
+	virtual double  GetGridSizeX_Implementation() const override { return GridSizeX; }
+	virtual double  GetGridSizeY_Implementation() const override { return GridSizeY; }
+	virtual FVector GetGridLocationOffset_Implementation() const override { return GridLocationOffset; }
+	virtual FIntPoint GetGridCoordFromIndex_Implementation(int32 Index) override;
+	virtual int32     GetGridIndexFromCoord_Implementation(FIntPoint Coord) override;
 };

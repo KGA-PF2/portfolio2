@@ -3,9 +3,13 @@
 #include "CharacterBase.h"
 #include "GameplayAbilitySpec.h"
 #include "BattleManager.h"      
-#include "PlayerCharacter.h"    // PlayerAbilityInputID를 사용하기 위해 포함
+#include "GridDataInterface.h"
+#include "Components/WidgetComponent.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "PlayerCharacter.h" 
 #include "Kismet/GameplayStatics.h" 
-#include "GA_Move.h" // GA_Move 클래스를 직접 참조하기 위해 포함
+#include "GridISM.h"
+#include "GA_Move.h"
 
 ACharacterBase::ACharacterBase()
 {
@@ -30,6 +34,13 @@ void ACharacterBase::BeginPlay()
 	if (AbilitySystem)
 	{
 		AbilitySystem->InitAbilityActorInfo(this, this);
+
+		if (Attributes)
+		{
+			// "Health 속성값이 변하면 OnHealthAttributeChanged 함수를 실행해라" 라고 등록
+			AbilitySystem->GetGameplayAttributeValueChangeDelegate(
+				Attributes->GetHPAttribute()).AddUObject(this, &ACharacterBase::OnHealthAttributeChanged);
+		}
 	}
 
 	if (HasAuthority())
@@ -39,46 +50,28 @@ void ACharacterBase::BeginPlay()
 		GiveMoveAbilities();
 	}
 
-
-	// 1. HPBarActorClass가 설정되어 있는지 확인
-	if (HPBarActorClass)
+	if (BattleManagerRef && BattleManagerRef->GridActorRef)
 	{
-		// 2. 스폰 위치 계산
-		FVector SpawnLocation = GetActorLocation();
-
-		// 3. HP바 액터 스폰
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		SpawnParams.Owner = this;
-
-		HPBarActor = GetWorld()->SpawnActor<AActor>(HPBarActorClass, SpawnLocation, FRotator::ZeroRotator, SpawnParams);
-
-		// 4. 스폰 성공 및 AttributeSet 유효성 확인
-		if (HPBarActor)
+		AGridISM* Grid = Cast<AGridISM>(BattleManagerRef->GridActorRef);
+		if (Grid && Attributes)
 		{
-			HPBarActor->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
+			int32 Cur = FMath::RoundToInt(Attributes->GetHealth_BP());
+			int32 Max = FMath::RoundToInt(Attributes->GetMaxHealth_BP());
 
-			if (Attributes)
-			{
-				FScriptDelegate Delegate;
-				Delegate.BindUFunction(HPBarActor, FName("HandleHealthChanged"));
+			// 현재 칸(GridIndex)의 HP바 켜기
+			Grid->UpdateTileHPBar(GridIndex, true, Cur, Max);
 
-				if (!OnHealthChanged.Contains(Delegate))
-				{
-					OnHealthChanged.Add(Delegate);
-				}
+			// 위치 기억
+			CachedGridIndex = GridIndex;
 
-				int32 CurrentHP = FMath::RoundToInt(Attributes->GetHealth_BP());
-				int32 MaxHP = FMath::RoundToInt(Attributes->GetMaxHealth_BP());
-				OnHealthChanged.Broadcast(CurrentHP, MaxHP);
-			}
+			// 델리게이트 연결 (HP 변할 때 갱신용)
+			FScriptDelegate Delegate;
+			Delegate.BindUFunction(this, FName("OnHealthChanged_Wrapper")); // 아래 4번에서 만들 함수
+			OnHealthChanged.Add(Delegate);
 		}
 	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("%s: HPBarActorClass 설정되지 않음"), *GetName());
-	}
 }
+
 
 // ───────── GAS ─────────
 
@@ -196,8 +189,56 @@ void ACharacterBase::CancelSkillQueue()
  */
 void ACharacterBase::MoveToCell(FIntPoint TargetCoord, int32 TargetIndex)
 {
-	GridCoord = TargetCoord;
-	GridIndex = TargetIndex;
+    // 1. 이전 칸 HP바 끄기
+    if (BattleManagerRef && BattleManagerRef->GridActorRef)
+    {
+        AGridISM* Grid = Cast<AGridISM>(BattleManagerRef->GridActorRef);
+        if (Grid)
+        {
+            Grid->UpdateTileHPBar(CachedGridIndex, false); // 끄기
+        }
+    }
+
+    // 2. 좌표 갱신
+    GridCoord = TargetCoord;
+    GridIndex = TargetIndex;
+    CachedGridIndex = TargetIndex;
+
+    // 3. 새 칸 HP바 켜기 (값 갱신)
+    if (BattleManagerRef && BattleManagerRef->GridActorRef)
+    {
+        AGridISM* Grid = Cast<AGridISM>(BattleManagerRef->GridActorRef);
+        if (Grid && Attributes)
+        {
+            int32 Cur = FMath::RoundToInt(Attributes->GetHealth_BP());
+            int32 Max = FMath::RoundToInt(Attributes->GetMaxHealth_BP());
+            Grid->UpdateTileHPBar(GridIndex, true, Cur, Max);
+        }
+    }
+}
+
+void ACharacterBase::OnHealthChanged_Wrapper(int32 CurrentHP, int32 MaxHP)
+{
+	if (BattleManagerRef && BattleManagerRef->GridActorRef)
+	{
+		AGridISM* Grid = Cast<AGridISM>(BattleManagerRef->GridActorRef);
+		if (Grid)
+		{
+			// 죽으면 끄기, 살았으면 갱신
+			bool bShow = (CurrentHP > 0);
+			Grid->UpdateTileHPBar(GridIndex, bShow, CurrentHP, MaxHP);
+		}
+	}
+}
+
+void ACharacterBase::OnHealthAttributeChanged(const FOnAttributeChangeData& Data)
+{
+	// 변경된 값 가져오기
+	float NewHealth = Data.NewValue;
+	float MaxHealth = Attributes->GetMaxHP(); // MaxHealth는 변동 없다고 가정, 필요시 이것도 감지해야 함
+
+	// 기존에 만들어둔 델리게이트 방송 -> GridISM의 UpdateTileHPBar가 호출됨
+	OnHealthChanged.Broadcast((int32)NewHealth, (int32)MaxHealth);
 }
 
 void ACharacterBase::Turn(bool bRight)
@@ -224,6 +265,12 @@ void ACharacterBase::ApplyDamage(float Damage)
 	{
 		// BaseAttributeSet.h에 정의된 인라인 함수 사용
 		Attributes->ApplyDamage(Damage);
+
+		int32 CurrentHP = FMath::RoundToInt(Attributes->GetHealth_BP());
+		int32 MaxHP = FMath::RoundToInt(Attributes->GetMaxHealth_BP());
+
+		// UpdateTileHPBar가 즉시 호출
+		OnHealthChanged.Broadcast(CurrentHP, MaxHP);
 	}
 }
 
