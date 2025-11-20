@@ -116,10 +116,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Spawn")
 	TArray<int32> EnemySpawnIndices;
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
 	void SpawnPlayer();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
 	void SpawnEnemiesForRound();
 
 	// ──────────────────────────────

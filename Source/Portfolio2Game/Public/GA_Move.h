@@ -6,6 +6,7 @@
 #include "GA_Move.generated.h"
 
 
+
 UCLASS()
 class PORTFOLIO2GAME_API UGA_Move : public UGameplayAbility
 {
