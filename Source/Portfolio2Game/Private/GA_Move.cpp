@@ -127,11 +127,8 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	TargetLocation.Z += Character->SpawnZOffset;
 
 
-	// 7. (신규) 순간이동 실행
-	Character->SetActorLocation(TargetLocation);
-
-	// 8. (신규) 캐릭터의 논리적 위치(좌표와 인덱스) 업데이트
-	Character->MoveToCell(TargetCoord, TargetIndex);
+	// 7. 캐릭터의 논리적 위치 업데이트 및 "이동 시작" 명령
+    Character->MoveToCell(TargetCoord, TargetIndex);
 
 	// 9. 턴 종료 및 어빌리티 종료
 	Character->EndAction();

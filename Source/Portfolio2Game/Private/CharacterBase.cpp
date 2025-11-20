@@ -13,7 +13,8 @@
 
 ACharacterBase::ACharacterBase()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	AbilitySystem = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystem"));
 	Attributes = CreateDefaultSubobject<UBaseAttributeSet>(TEXT("Attributes"));
@@ -176,6 +177,8 @@ void ACharacterBase::RequestRotation(EGridDirection NewDir, UAnimMontage* Montag
 	PendingRotationDirection = NewDir;
 	FacingDirection = NewDir; // 논리적 방향은 미리 업데이트 (UI 등 반영)
 
+	OnBusyStateChanged.Broadcast(true);
+
 	// 2. 애니메이션이 유효한지 체크
 	if (MontageToPlay && GetMesh()->GetAnimInstance())
 	{
@@ -227,12 +230,13 @@ void ACharacterBase::RotateToDirection(EGridDirection NewDir, bool bConsumeTurn)
 void ACharacterBase::StartAction()
 {
 	bCanAct = true;
-	//ExecuteSkillQueue();
+	OnBusyStateChanged.Broadcast(false);
 }
 
 void ACharacterBase::EndAction()
 {
 	bCanAct = false;
+	OnBusyStateChanged.Broadcast(true);
 	if (BattleManagerRef)
 	{
 		BattleManagerRef->EndCharacterTurn(this);
@@ -266,37 +270,23 @@ void ACharacterBase::CancelSkillQueue()
 
 // ───────── 이동/회전 (수정됨) ─────────
 
-/**
- * (수정됨) 캐릭터의 논리적 위치(좌표와 인덱스)를 업데이트합니다.
- */
 void ACharacterBase::MoveToCell(FIntPoint TargetCoord, int32 TargetIndex)
 {
-    // 1. 이전 칸 HP바 끄기
-    if (BattleManagerRef && BattleManagerRef->GridActorRef)
-    {
-        AGridISM* Grid = Cast<AGridISM>(BattleManagerRef->GridActorRef);
-        if (Grid)
-        {
-            Grid->UpdateTileHPBar(CachedGridIndex, false); // 끄기
-        }
-    }
+	
 
-    // 2. 좌표 갱신
-    GridCoord = TargetCoord;
-    GridIndex = TargetIndex;
-    CachedGridIndex = TargetIndex;
+	// 2. 논리적 좌표 갱신 (이건 즉시 바뀜)
+	GridCoord = TargetCoord;
+	GridIndex = TargetIndex;
 
-    // 3. 새 칸 HP바 켜기 (값 갱신)
-    if (BattleManagerRef && BattleManagerRef->GridActorRef)
-    {
-        AGridISM* Grid = Cast<AGridISM>(BattleManagerRef->GridActorRef);
-        if (Grid && Attributes)
-        {
-            int32 Cur = FMath::RoundToInt(Attributes->GetHealth_BP());
-            int32 Max = FMath::RoundToInt(Attributes->GetMaxHealth_BP());
-            Grid->UpdateTileHPBar(GridIndex, true, Cur, Max);
-        }
-    }
+
+	// BattleManager를 통해 목표 좌표의 월드 위치를 가져옴
+	if (BattleManagerRef)
+	{
+		FVector WorldDest = BattleManagerRef->GetWorldLocation(TargetCoord);
+		WorldDest.Z += SpawnZOffset; // 높이 보정
+
+		StartVisualMove(WorldDest);
+	}
 }
 
 void ACharacterBase::OnHealthChanged_Wrapper(int32 CurrentHP, int32 MaxHP)
@@ -353,4 +343,78 @@ void ACharacterBase::ApplyDamage(float Damage)
 	}
 }
 
-// ❌ (오류 수정) FOnAttributeChangeData 델리게이트 함수 구현부 제거
+// 매 프레임 호출
+void ACharacterBase::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (bIsVisualMoving)
+	{
+		// 시간 누적
+		VisualMoveTimeElapsed += DeltaTime;
+
+		// 진행률 계산 (0.0 ~ 1.0)
+		// 0.1초가 지나면 무조건 1.0이 됨
+		float Alpha = FMath::Clamp(VisualMoveTimeElapsed / VisualMoveDuration, 0.0f, 1.0f);
+
+		// 위치 보간 (Lerp: Start에서 Dest까지 Alpha만큼 이동)
+		FVector NewLoc = FMath::Lerp(VisualMoveStartLocation, VisualMoveDestination, Alpha);
+		SetActorLocation(NewLoc);
+
+		// 0.1초가 지났다면 (Alpha가 1.0이면) 도착 처리
+		if (Alpha >= 1.0f)
+		{
+			// 1. 위치를 목표점에 강제로 박아넣음
+			SetActorLocation(VisualMoveDestination);
+			bIsVisualMoving = false;
+
+			// 2. 애니메이션 즉시 차단
+			if (RunMontage && GetMesh()->GetAnimInstance())
+			{
+				GetMesh()->GetAnimInstance()->Montage_Stop(0.0f, RunMontage);
+			}
+
+			// 3. HP바 위치 갱신 및 켜기
+			if (BattleManagerRef && BattleManagerRef->GridActorRef)
+			{
+				AGridISM* Grid = Cast<AGridISM>(BattleManagerRef->GridActorRef);
+				if (Grid && Attributes)
+				{
+					// 출발지 끄기
+					Grid->UpdateTileHPBar(CachedGridIndex, false);
+
+					// 도착지 켜기
+					int32 Cur = FMath::RoundToInt(Attributes->GetHealth_BP());
+					int32 Max = FMath::RoundToInt(Attributes->GetMaxHealth_BP());
+					Grid->UpdateTileHPBar(GridIndex, true, Cur, Max);
+
+					// 캐시 갱신
+					CachedGridIndex = GridIndex;
+				}
+			}
+
+			// 4. 턴 종료
+			EndAction();
+		}
+	}
+}
+
+// 이동 시작 (내부 함수)
+void ACharacterBase::StartVisualMove(const FVector& TargetLocation)
+{
+	// 시작점과 목표점 기록
+	VisualMoveStartLocation = GetActorLocation();
+	VisualMoveDestination = TargetLocation;
+
+	// 시간 초기화
+	VisualMoveTimeElapsed = 0.0f;
+	bIsVisualMoving = true;
+
+	OnBusyStateChanged.Broadcast(true);
+
+	// 애니메이션 재생
+	if (RunMontage)
+	{
+		PlayAnimMontage(RunMontage);
+	}
+}
