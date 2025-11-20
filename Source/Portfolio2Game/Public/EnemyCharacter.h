@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "CharacterBase.h"
+#include "SkillBase.h"
 #include "EnemyCharacter.generated.h"
 
 class APlayerCharacter;
@@ -14,6 +15,10 @@ class AEnemyCharacter : public ACharacterBase
 
 public:
     AEnemyCharacter();
+
+    // 적 기본 공격 데이터
+    UPROPERTY(EditDefaultsOnly, Category = "AI")
+    TObjectPtr<USkillBase> NormalAttackSkill;
 
 protected:
     virtual void BeginPlay() override;
@@ -28,8 +33,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "AI")
     void AttackNearestPlayer();
 
+    // [이름 변경] MoveUp -> MoveForward (바라보는 방향 전진)
     UFUNCTION(BlueprintCallable, Category = "AI")
-    void MoveUp();
+    void MoveForward();
 
     // ──────────────────────────────
     // 참조

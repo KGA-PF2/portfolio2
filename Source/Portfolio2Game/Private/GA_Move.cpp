@@ -20,14 +20,14 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
 	// 1. 컴포넌트 가져오기
-	APlayerCharacter* PlayerChar = Cast<APlayerCharacter>(ActorInfo->AvatarActor.Get());
-	if (!PlayerChar || !PlayerChar->bCanAct)
+	ACharacterBase* Character = Cast<ACharacterBase>(ActorInfo->AvatarActor.Get());
+	if (!Character || !Character->bCanAct)
 	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // 행동 불가
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
-	ABattleManager* BattleManagerRef = PlayerChar->BattleManagerRef;
+	ABattleManager* BattleManagerRef = Character->BattleManagerRef;
 	TScriptInterface<IGridDataInterface> GridInterface = BattleManagerRef ? BattleManagerRef->GridInterface : nullptr;
 
 	if (!BattleManagerRef || !GridInterface)
@@ -61,7 +61,7 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	}
 
 	// 3. 목표 인덱스(칸 번호) 계산
-	const int32 CurrentIndex = PlayerChar->GridIndex;
+	const int32 CurrentIndex = Character->GridIndex;
 	int32 TargetIndex = CurrentIndex;
 
 	// (신규) 그리드 크기(세로 길이)를 인터페이스에서 가져옴
@@ -124,16 +124,16 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 	// 6. 목표 월드 위치 계산
 	FVector TargetLocation = BattleManagerRef->GetWorldLocation(TargetCoord);
-	TargetLocation.Z += PlayerChar->SpawnZOffset;
+	TargetLocation.Z += Character->SpawnZOffset;
 
 
 	// 7. (신규) 순간이동 실행
-	PlayerChar->SetActorLocation(TargetLocation);
+	Character->SetActorLocation(TargetLocation);
 
 	// 8. (신규) 캐릭터의 논리적 위치(좌표와 인덱스) 업데이트
-	PlayerChar->MoveToCell(TargetCoord, TargetIndex);
+	Character->MoveToCell(TargetCoord, TargetIndex);
 
 	// 9. 턴 종료 및 어빌리티 종료
-	PlayerChar->EndAction();
+	Character->EndAction();
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false); // 성공
 }
