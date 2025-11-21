@@ -102,7 +102,11 @@ public:
 	void EndCharacterTurn(ACharacterBase* Character);
 
 protected:
-	void ExecuteEnemyActions();
+	// 현재 행동 중인 적의 인덱스 (0, 1, 2...)
+	int32 CurrentEnemyActionIndex = 0;
+
+	// 다음 순번 적에게 행동 명령 내리기
+	void ProcessNextEnemyAction();
 
 	// ──────────────────────────────
 	// 스폰 관련 (수정됨)

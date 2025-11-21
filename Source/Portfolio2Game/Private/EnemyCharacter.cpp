@@ -16,9 +16,6 @@ void AEnemyCharacter::BeginPlay()
     PlayerRef = Cast<APlayerCharacter>(
         UGameplayStatics::GetActorOfClass(GetWorld(), APlayerCharacter::StaticClass()));
 
-    BattleManagerRef = Cast<ABattleManager>(
-        UGameplayStatics::GetActorOfClass(GetWorld(), ABattleManager::StaticClass()));
-
 	// 체력이 변하면 HandleHealthChanged 함수가 자동 실행
 	if (HasAuthority())
 	{
@@ -26,147 +23,158 @@ void AEnemyCharacter::BeginPlay()
 	}
 }
 
-// ──────────────────────────────
-// 적 턴 행동 (BattleManager에서 호출됨)
-// ──────────────────────────────
-void AEnemyCharacter::ExecuteAIAction()
+// 1단계: 생각하기
+void AEnemyCharacter::DecideNextAction()
 {
-	if (bDead || !PlayerRef)
+	if (bDead || !PlayerRef || !BrainData)
 	{
-		EndAction();
+		PendingAction = EAIActionType::Wait;
 		return;
 	}
 
-	// 1. 플레이어 방향 계산
-	int32 XDiff = PlayerRef->GridCoord.X - GridCoord.X;
-	int32 YDiff = PlayerRef->GridCoord.Y - GridCoord.Y;
+	EAIActionType BestAction = EAIActionType::Wait;
 
-	EGridDirection TargetDir = FacingDirection;
-
-	// 더 멀리 떨어진 축을 기준으로 바라볼 방향 결정
-	if (FMath::Abs(XDiff) >= FMath::Abs(YDiff))
+	// DB 규칙 순차 검사 (우선순위 방식)
+	for (const FAIActionRule& Rule : BrainData->ActionRules)
 	{
-		TargetDir = (XDiff > 0) ? EGridDirection::Right : EGridDirection::Left;
-	}
-	else
-	{
-		TargetDir = (YDiff > 0) ? EGridDirection::Down : EGridDirection::Up;
-	}
-
-	// 2. 바라보는 방향이 틀리면 -> "회전" (턴 소모)
-	if (FacingDirection != TargetDir)
-	{
-		// 180도 회전인지 체크 (단순화된 로직)
-		bool bIs180 = (FacingDirection == EGridDirection::Right && TargetDir == EGridDirection::Left) ||
-			(FacingDirection == EGridDirection::Left && TargetDir == EGridDirection::Right) ||
-			(FacingDirection == EGridDirection::Up && TargetDir == EGridDirection::Down) ||
-			(FacingDirection == EGridDirection::Down && TargetDir == EGridDirection::Up);
-
-		UAnimMontage* MontageToUse = bIs180 ? Montage_Rotate180 : Montage_RotateCW;
-
-		RequestRotation(TargetDir, MontageToUse);
-		return; // 회전하고 턴 종료
-	}
-
-	// 3. 방향이 맞으면 -> 공격 가능 거리인지 체크
-	bool bCanAttack = false;
-
-	// 현재 바라보는 방향 기준 직선상에 있는지 확인
-	switch (FacingDirection)
-	{
-	case EGridDirection::Right: bCanAttack = (YDiff == 0 && XDiff > 0 && XDiff <= 2); break;
-	case EGridDirection::Left:  bCanAttack = (YDiff == 0 && XDiff < 0 && XDiff >= -2); break;
-	case EGridDirection::Down:  bCanAttack = (XDiff == 0 && YDiff > 0 && YDiff <= 2); break;
-	case EGridDirection::Up:    bCanAttack = (XDiff == 0 && YDiff < 0 && YDiff >= -2); break;
-	}
-
-	if (bCanAttack)
-	{
-		AttackNearestPlayer();
-	}
-	else
-	{
-		MoveForward();
-	}
-}
-
-// ──────────────────────────────
-// 플레이어 공격 (같은 행에서 가장 가까운 전방)
-// ──────────────────────────────
-void AEnemyCharacter::AttackNearestPlayer()
-{
-	// 예외 처리
-	if (!PlayerRef || bDead)
-	{
-		EndAction();
-		return;
-	}
-
-	// 1. 좌표 차이 계산
-	int32 XDiff = PlayerRef->GridCoord.X - GridCoord.X;
-	int32 YDiff = PlayerRef->GridCoord.Y - GridCoord.Y;
-
-	bool bCanAttack = false;
-
-	// 2. 현재 바라보는 방향(FacingDirection)에 플레이어가 있는지 + 사거리(2칸) 체크
-	switch (FacingDirection)
-	{
-	case EGridDirection::Right: // X+ 방향 (오른쪽)
-		// 같은 행(Y)이어야 하고, 플레이어가 내 오른쪽 1~2칸 내에 있어야 함
-		bCanAttack = (YDiff == 0 && XDiff > 0 && XDiff <= 2);
-		break;
-
-	case EGridDirection::Left:  // X- 방향 (왼쪽)
-		// 같은 행(Y), 플레이어가 내 왼쪽 1~2칸 내
-		bCanAttack = (YDiff == 0 && XDiff < 0 && XDiff >= -2);
-		break;
-
-	case EGridDirection::Down:  // Y+ 방향 (아래쪽)
-		// 같은 열(X), 플레이어가 내 아래쪽 1~2칸 내
-		bCanAttack = (XDiff == 0 && YDiff > 0 && YDiff <= 2);
-		break;
-
-	case EGridDirection::Up:    // Y- 방향 (위쪽)
-		// 같은 열(X), 플레이어가 내 위쪽 1~2칸 내
-		bCanAttack = (XDiff == 0 && YDiff < 0 && YDiff >= -2);
-		break;
-	}
-
-	// 3. 공격 실행 혹은 실패 시 이동
-	if (bCanAttack)
-	{
-		// [수정됨] GAS 어빌리티 실행
-		if (AbilitySystem && GenericAttackAbilityClass && Skill_A)
+		bool bAllConditionsMet = true;
+		for (EAIConditionType Cond : Rule.RequiredConditions)
 		{
-			FGameplayAbilitySpec* Spec = AbilitySystem->FindAbilitySpecFromClass(GenericAttackAbilityClass);
-			if (Spec)
+			if (!CheckCondition(Cond))
 			{
-				FGameplayEventData Payload;
-				Payload.OptionalObject = Skill_A;
-				Payload.Instigator = this;
-				Payload.Target = this;
-
-				FGameplayTag TriggerTag = FGameplayTag::RequestGameplayTag(TEXT("Ability.Skill.Attack"));
-
-				AbilitySystem->TriggerAbilityFromGameplayEvent(
-					Spec->Handle,
-					AbilitySystem->AbilityActorInfo.Get(),
-					TriggerTag,
-					&Payload,
-					*AbilitySystem
-				);
+				bAllConditionsMet = false;
+				break;
 			}
 		}
 
-		EndAction(); // 턴 종료
+		if (bAllConditionsMet)
+		{
+			BestAction = Rule.ActionToExecute;
+			break; // 선착순 채택
+		}
 	}
-	else
+
+	PendingAction = BestAction;
+}
+
+// 2단계: 행동하기 (저장된 값으로 실행)
+void AEnemyCharacter::ExecutePlannedAction()
+{
+	if (bDead)
 	{
-		// 공격 범위에 없으면 전진 시도
-		MoveForward();
+		EndAction();
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("%s Executing Plan: %d"), *GetName(), (int32)PendingAction);
+
+	// 저장해둔 행동 실행 (기존 PerformAction 호출)
+	PerformAction(PendingAction);
+}
+
+// ───────── 조건 판독기 ─────────
+bool AEnemyCharacter::CheckCondition(EAIConditionType Condition)
+{
+	if (!PlayerRef) return false;
+
+	switch (Condition)
+	{
+	case EAIConditionType::None: return true;
+	case EAIConditionType::HasReservedSkill: return (ReservedSkill != nullptr);
+	case EAIConditionType::NoReservedSkill: return (ReservedSkill == nullptr);
+	case EAIConditionType::JustAttacked: return bJustAttacked;
+
+		// 사거리 내 체크
+	case EAIConditionType::PlayerInSkillRange_Reserved: return IsPlayerInSkillRange(ReservedSkill);
+	case EAIConditionType::PlayerInSkillRange_A: return IsPlayerInSkillRange(Skill_A);
+	case EAIConditionType::PlayerInSkillRange_B: return IsPlayerInSkillRange(Skill_B);
+
+
+		// [신규] 예약된 스킬 사거리 밖인가? (예약은 했는데 적이 튀었나?)
+	case EAIConditionType::PlayerOutOfSkillRange_Reserved:
+		return (ReservedSkill != nullptr && !IsPlayerInSkillRange(ReservedSkill));
+
+	case EAIConditionType::PlayerOutOfSkillRange_A: return !IsPlayerInSkillRange(Skill_A);
+	case EAIConditionType::PlayerOutOfSkillRange_B: return !IsPlayerInSkillRange(Skill_B);
+
+
+	case EAIConditionType::PlayerInLine_Far:
+	{
+		int32 XDiff = PlayerRef->GridCoord.X - GridCoord.X;
+		int32 YDiff = PlayerRef->GridCoord.Y - GridCoord.Y;
+		USkillBase* CurrentSkill = ReservedSkill ? ReservedSkill : Skill_A;
+		int32 MaxReach = GetMaxAttackRange(CurrentSkill);
+
+		if (FacingDirection == EGridDirection::Right) return (YDiff == 0 && XDiff > MaxReach);
+		if (FacingDirection == EGridDirection::Left)  return (YDiff == 0 && XDiff < -MaxReach);
+		if (FacingDirection == EGridDirection::Down)  return (XDiff == 0 && YDiff > MaxReach);
+		if (FacingDirection == EGridDirection::Up)    return (XDiff == 0 && YDiff < -MaxReach);
+		return false;
+	}
+
+	case EAIConditionType::PlayerDifferentLine:
+	{
+		int32 XDiff = PlayerRef->GridCoord.X - GridCoord.X;
+		int32 YDiff = PlayerRef->GridCoord.Y - GridCoord.Y;
+		if (FacingDirection == EGridDirection::Right || FacingDirection == EGridDirection::Left) return YDiff != 0;
+		else return XDiff != 0;
+	}
+
+	case EAIConditionType::PlayerNotInFront:
+		return !IsPlayerInFrontCone();
+
+	case EAIConditionType::CanMoveToAttackPos:
+	{
+		EGridDirection DummyDir;
+		// 예약된 스킬이 있으면 그걸 위해, 없으면 A 스킬을 위해 이동 가능한지 체크
+		USkillBase* TargetSkill = ReservedSkill ? ReservedSkill : Skill_A;
+		return GetBestMovementToAttack(TargetSkill, DummyDir);
+	}
+	}
+	return false;
+}
+
+bool AEnemyCharacter::IsPlayerInFrontCone()
+{
+	if (!PlayerRef) return false;
+	int32 XDiff = PlayerRef->GridCoord.X - GridCoord.X;
+	int32 YDiff = PlayerRef->GridCoord.Y - GridCoord.Y;
+
+	if (FacingDirection == EGridDirection::Right) return XDiff > 0;
+	if (FacingDirection == EGridDirection::Left) return XDiff < 0;
+	if (FacingDirection == EGridDirection::Down) return YDiff > 0;
+	if (FacingDirection == EGridDirection::Up) return YDiff < 0;
+	return false;
+}
+
+// ───────── 행동 실행기 (Action Performer) ─────────
+void AEnemyCharacter::PerformAction(EAIActionType ActionType)
+{
+	switch (ActionType)
+	{
+	case EAIActionType::FireReserved:   Action_FireReserved(); break;
+	case EAIActionType::ReserveSkill_A: Action_ReserveSkill(Skill_A); break;
+	case EAIActionType::ReserveSkill_B: Action_ReserveSkill(Skill_B); break;
+
+	case EAIActionType::Move_Front: Action_Move(EGridDirection::Right); break;
+	case EAIActionType::Move_Back:  Action_Move(EGridDirection::Left);  break;
+	case EAIActionType::Move_Left:  Action_Move(EGridDirection::Up);    break;
+	case EAIActionType::Move_Right: Action_Move(EGridDirection::Down);  break;
+
+	case EAIActionType::RotateToPlayer: Action_RotateToPlayer(); break;
+	case EAIActionType::MoveToBestAttackPos: Action_MoveToBestAttackPos(); break;
+
+	case EAIActionType::Wait:
+	default:
+		bJustAttacked = false;
+		EndAction();
+		break;
 	}
 }
-void AEnemyCharacter::MoveForward()
+
+// ───────── [핵심] 이동 로직 통합 (좌표 변환) ─────────
+// RelativeDir: 내 기준 상대 방향 (Right=전진, Left=후진, Up=왼쪽, Down=오른쪽)
+void AEnemyCharacter::Action_Move(EGridDirection RelativeDir)
 {
 	if (!AbilitySystem)
 	{
@@ -174,26 +182,120 @@ void AEnemyCharacter::MoveForward()
 		return;
 	}
 
-	FString TagName = "Ability.Move.Right"; // Default
+	FString MoveTag = "Ability.Move.Right"; // Default
 
-	switch (FacingDirection)
-	{
-	case EGridDirection::Right: TagName = "Ability.Move.Right"; break;
-	case EGridDirection::Left:  TagName = "Ability.Move.Left"; break;
-	case EGridDirection::Up:    TagName = "Ability.Move.Up"; break;
-	case EGridDirection::Down:  TagName = "Ability.Move.Down"; break;
+	// 예: 내가 Right(X+)를 보고 있다.
+	// 전진(Rel.Right) -> World Right
+	// 후진(Rel.Left)  -> World Left
+	// 왼쪽(Rel.Up)    -> World Up
+	// 오른쪽(Rel.Down)-> World Down
+
+	// 예: 내가 Up(Y-)를 보고 있다.
+	// 전진(Rel.Right) -> World Up
+	// 후진(Rel.Left)  -> World Down
+	// 왼쪽(Rel.Up)    -> World Left (Y-에서 왼쪽은 X-)
+
+	EGridDirection FinalWorldDir = EGridDirection::Right;
+
+	if (FacingDirection == EGridDirection::Right) {
+		if (RelativeDir == EGridDirection::Right) FinalWorldDir = EGridDirection::Right; // 전
+		if (RelativeDir == EGridDirection::Left)  FinalWorldDir = EGridDirection::Left;  // 후
+		if (RelativeDir == EGridDirection::Up)    FinalWorldDir = EGridDirection::Up;    // 좌
+		if (RelativeDir == EGridDirection::Down)  FinalWorldDir = EGridDirection::Down;  // 우
+	}
+	else if (FacingDirection == EGridDirection::Left) {
+		if (RelativeDir == EGridDirection::Right) FinalWorldDir = EGridDirection::Left;  // 전
+		if (RelativeDir == EGridDirection::Left)  FinalWorldDir = EGridDirection::Right; // 후
+		if (RelativeDir == EGridDirection::Up)    FinalWorldDir = EGridDirection::Down;  // 좌(Y+)
+		if (RelativeDir == EGridDirection::Down)  FinalWorldDir = EGridDirection::Up;    // 우(Y-)
+	}
+	else if (FacingDirection == EGridDirection::Up) { // Y-
+		if (RelativeDir == EGridDirection::Right) FinalWorldDir = EGridDirection::Up;    // 전
+		if (RelativeDir == EGridDirection::Left)  FinalWorldDir = EGridDirection::Down;  // 후
+		if (RelativeDir == EGridDirection::Up)    FinalWorldDir = EGridDirection::Left;  // 좌(X-)
+		if (RelativeDir == EGridDirection::Down)  FinalWorldDir = EGridDirection::Right; // 우(X+)
+	}
+	else if (FacingDirection == EGridDirection::Down) { // Y+
+		if (RelativeDir == EGridDirection::Right) FinalWorldDir = EGridDirection::Down;
+		if (RelativeDir == EGridDirection::Left)  FinalWorldDir = EGridDirection::Up;
+		if (RelativeDir == EGridDirection::Up)    FinalWorldDir = EGridDirection::Right;
+		if (RelativeDir == EGridDirection::Down)  FinalWorldDir = EGridDirection::Left;
 	}
 
-	FGameplayTag ContainerTag = FGameplayTag::RequestGameplayTag(*TagName);
-	FGameplayTagContainer TagContainer;
-	TagContainer.AddTag(ContainerTag);
+	// 태그 문자열 변환
+	switch (FinalWorldDir)
+	{
+	case EGridDirection::Right: MoveTag = "Ability.Move.Right"; break;
+	case EGridDirection::Left:  MoveTag = "Ability.Move.Left"; break;
+	case EGridDirection::Up:    MoveTag = "Ability.Move.Up"; break;
+	case EGridDirection::Down:  MoveTag = "Ability.Move.Down"; break;
+	}
 
-	if (!AbilitySystem->TryActivateAbilitiesByTag(TagContainer))
+	// 실행
+	FGameplayTagContainer MoveTags;
+	MoveTags.AddTag(FGameplayTag::RequestGameplayTag(*MoveTag));
+	if (!AbilitySystem->TryActivateAbilitiesByTag(MoveTags))
 	{
 		EndAction(); // 실패 시 턴 넘김
 	}
+
+	bJustAttacked = false;
 }
 
+void AEnemyCharacter::Action_FireReserved()
+{
+	if (ReservedSkill) ExecuteSkill(ReservedSkill);
+	ReservedSkill = nullptr;
+	bJustAttacked = true;
+	EndAction();
+}
+
+void AEnemyCharacter::Action_ReserveSkill(USkillBase* Skill)
+{
+	ReservedSkill = Skill;
+	UE_LOG(LogTemp, Warning, TEXT("Skill Reserved: %s"), *Skill->SkillName.ToString());
+	bJustAttacked = false;
+	EndAction();
+}
+
+void AEnemyCharacter::Action_RotateToPlayer()
+{
+	int32 XDiff = PlayerRef->GridCoord.X - GridCoord.X;
+	int32 YDiff = PlayerRef->GridCoord.Y - GridCoord.Y;
+	EGridDirection TargetDir = FacingDirection;
+
+	if (FMath::Abs(XDiff) >= FMath::Abs(YDiff)) TargetDir = (XDiff > 0) ? EGridDirection::Right : EGridDirection::Left;
+	else TargetDir = (YDiff > 0) ? EGridDirection::Down : EGridDirection::Up;
+
+	RequestRotation(TargetDir, nullptr);
+	bJustAttacked = false;
+}
+
+void AEnemyCharacter::Action_MoveToBestAttackPos()
+{
+	USkillBase* Skill = ReservedSkill ? ReservedSkill : Skill_A;
+	EGridDirection WorldMoveDir;
+
+	if (GetBestMovementToAttack(Skill, WorldMoveDir))
+	{
+		FString MoveTag = "Ability.Move.Right";
+		switch (WorldMoveDir) {
+		case EGridDirection::Right: MoveTag = "Ability.Move.Right"; break;
+		case EGridDirection::Left: MoveTag = "Ability.Move.Left"; break;
+		case EGridDirection::Up: MoveTag = "Ability.Move.Up"; break;
+		case EGridDirection::Down: MoveTag = "Ability.Move.Down"; break;
+		}
+		FGameplayTagContainer MoveTags;
+		MoveTags.AddTag(FGameplayTag::RequestGameplayTag(*MoveTag));
+
+		if (!AbilitySystem || !AbilitySystem->TryActivateAbilitiesByTag(MoveTags)) EndAction();
+	}
+	else
+	{
+		EndAction(); // 갈 곳 없음
+	}
+	bJustAttacked = false;
+}
 
 // 스킬 사용
 bool AEnemyCharacter::ExecuteSkill(USkillBase* SkillToUse)
@@ -229,6 +331,85 @@ bool AEnemyCharacter::ExecuteSkill(USkillBase* SkillToUse)
 		return true;
 	}
 
+	return false;
+}
+
+
+// ───────── 유틸리티 ─────────
+
+bool AEnemyCharacter::GetBestMovementToAttack(USkillBase* Skill, EGridDirection& OutWorldDir)
+{
+	if (!Skill || !PlayerRef) return false;
+	FIntPoint MyPos = GridCoord;
+	FIntPoint PlayerPos = PlayerRef->GridCoord;
+
+	TArray<FIntPoint> SweetSpots;
+	for (const FIntPoint& Point : Skill->AttackPattern)
+	{
+		// Y축 반전(-Point.Y)하여 4방향 역산 후보지 생성
+		int32 PX = Point.X; int32 PY = -Point.Y;
+		SweetSpots.Add(PlayerPos - FIntPoint(PX, PY));   // Right
+		SweetSpots.Add(PlayerPos - FIntPoint(-PX, -PY)); // Left
+		SweetSpots.Add(PlayerPos - FIntPoint(-PY, PX));  // Down
+		SweetSpots.Add(PlayerPos - FIntPoint(PY, -PX));  // Up
+	}
+
+	int32 MinDist = 9999;
+	bool bFound = false;
+	const FIntPoint Dirs[] = { FIntPoint(1,0), FIntPoint(-1,0), FIntPoint(0,1), FIntPoint(0,-1) };
+	const EGridDirection Enums[] = { EGridDirection::Right, EGridDirection::Left, EGridDirection::Down, EGridDirection::Up };
+
+	for (int i = 0; i < 4; ++i)
+	{
+		FIntPoint NextPos = MyPos + Dirs[i];
+		if (BattleManagerRef && BattleManagerRef->GetCharacterAt(NextPos) != nullptr) continue;
+
+		for (const FIntPoint& Spot : SweetSpots)
+		{
+			int32 Dist = FMath::Abs(Spot.X - NextPos.X) + FMath::Abs(Spot.Y - NextPos.Y);
+			if (Dist < MinDist)
+			{
+				MinDist = Dist;
+				OutWorldDir = Enums[i];
+				bFound = true;
+			}
+		}
+	}
+	return bFound;
+}
+
+// 스킬의 최대 사거리(전방 X축) 계산
+int32 AEnemyCharacter::GetMaxAttackRange(USkillBase* Skill)
+{
+	if (!Skill) return 1; // 기본값
+
+	int32 MaxX = 0;
+	for (const FIntPoint& Pt : Skill->AttackPattern)
+	{
+		// X값이 전방 거리라고 가정
+		if (Pt.X > MaxX) MaxX = Pt.X;
+	}
+	return (MaxX > 0) ? MaxX : 1;
+}
+
+bool AEnemyCharacter::IsPlayerInSkillRange(USkillBase* Skill)
+{
+	if (!Skill || !PlayerRef) return false;
+	FIntPoint Origin = GridCoord;
+
+	for (const FIntPoint& Point : Skill->AttackPattern)
+	{
+		int32 P_X = Point.X;
+		int32 P_Y = -Point.Y; // [수정] Y 반전 (GA_SkillAttack과 통일)
+
+		int32 RX = 0, RY = 0;
+		if (FacingDirection == EGridDirection::Right) { RX = P_X; RY = P_Y; }
+		else if (FacingDirection == EGridDirection::Left) { RX = -P_X; RY = -P_Y; }
+		else if (FacingDirection == EGridDirection::Down) { RX = -P_Y; RY = P_X; }
+		else if (FacingDirection == EGridDirection::Up) { RX = P_Y; RY = -P_X; }
+
+		if (Origin + FIntPoint(RX, RY) == PlayerRef->GridCoord) return true;
+	}
 	return false;
 }
 
