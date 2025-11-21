@@ -140,7 +140,7 @@ void ABattleManager::EndCharacterTurn(ACharacterBase* Character)
 		return;
 	}
 
-	// 전체 입력 잠금 0.3초
+	// 전체 입력 잠금 0.2초
 	GetWorld()->GetTimerManager().SetTimerForNextTick([this, Character]()
 		{
 			GetWorld()->GetTimerManager().SetTimer(TurnDelayHandle, [this, Character]()
@@ -149,7 +149,7 @@ void ABattleManager::EndCharacterTurn(ACharacterBase* Character)
 						StartEnemyTurn();
 					else
 						StartPlayerTurn();
-				}, 0.3f, false);
+				}, 0.2f, false);
 		});
 }
 

@@ -30,4 +30,7 @@ private:
 	// 실행 중인 스킬 정보 임시 저장
 	UPROPERTY()
 	TObjectPtr<USkillBase> CachedSkillInfo;
+
+	// [신규] 전달받은 데미지 저장용
+	float CachedDamage = 0.0f;
 };

@@ -20,8 +20,21 @@ void UGA_SkillAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle, c
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
 	ACharacterBase* Caster = Cast<ACharacterBase>(ActorInfo->AvatarActor.Get());
-	// TriggerEventData의 OptionalObject에 담겨온 스킬 정보를 꺼냅니다.
-	USkillBase* SkillInfo = Cast<USkillBase>(TriggerEventData->OptionalObject);
+	USkillBase* SkillInfo = nullptr;
+
+	if (TriggerEventData)
+	{
+		SkillInfo = Cast<USkillBase>(TriggerEventData->OptionalObject);
+
+		if (TriggerEventData->EventMagnitude > 0.0f)
+		{
+			CachedDamage = TriggerEventData->EventMagnitude;
+		}
+		else if (SkillInfo)
+		{
+			CachedDamage = (float)SkillInfo->BaseDamage;
+		}
+	}
 
 	if (!Caster || !SkillInfo)
 	{
@@ -88,29 +101,23 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 	{
 		// ───────── [좌표 회전 계산] ─────────
 		// Point.X = 전방 거리, Point.Y = 우측 거리
+		int32 P_X = Point.X;
+		int32 P_Y = -Point.Y;
+
 		int32 RotatedX = 0;
 		int32 RotatedY = 0;
 
 		switch (Facing)
 		{
-		case EGridDirection::Right: // 기본 (X+)
-			RotatedX = Point.X;
-			RotatedY = Point.Y;
-			break;
-		case EGridDirection::Left:  // 180도 (X-)
-			RotatedX = -Point.X;
-			RotatedY = -Point.Y;
-			break;
-		case EGridDirection::Down:  // 90도 시계 (Y+) -> 전방이 Y+, 우측이 X-
-			RotatedX = -Point.Y;
-			RotatedY = Point.X;
-			break;
-		case EGridDirection::Up:    // 90도 반시계 (Y-) -> 전방이 Y-, 우측이 X+
-			RotatedX = Point.Y;
-			RotatedY = -Point.X;
-			break;
+		case EGridDirection::Right: // X+
+			RotatedX = P_X; RotatedY = P_Y; break;
+		case EGridDirection::Left:  // X-
+			RotatedX = -P_X; RotatedY = -P_Y; break;
+		case EGridDirection::Down:  // Y+
+			RotatedX = -P_Y; RotatedY = P_X; break;
+		case EGridDirection::Up:    // Y-
+			RotatedX = P_Y; RotatedY = -P_X; break;
 		}
-
 		FIntPoint TargetCoord = Origin + FIntPoint(RotatedX, RotatedY);
 		// ────────────────────────────────
 
@@ -134,16 +141,10 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 		// 2. [데미지 처리] 유효한 캐릭터가 있는지 확인
 		ACharacterBase* TargetChar = BM->GetCharacterAt(TargetCoord);
 
+		// "대상이 존재하고" && "나 자신이 아닐 때"만 공격
 		if (TargetChar && TargetChar != Caster)
 		{
-			// 아군 오인 사격 방지
-			bool bIsCasterPlayer = Caster->IsA(APlayerCharacter::StaticClass());
-			bool bIsTargetPlayer = TargetChar->IsA(APlayerCharacter::StaticClass());
-
-			if (bIsCasterPlayer != bIsTargetPlayer)
-			{
-				TargetChar->ApplyDamage(FinalDamage);
-			}
+			TargetChar->ApplyDamage(FinalDamage);
 		}
 	}
 }
