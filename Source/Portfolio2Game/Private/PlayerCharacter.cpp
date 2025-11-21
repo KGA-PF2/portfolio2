@@ -6,7 +6,7 @@
 #include "GameplayAbilitySpec.h"
 #include "AbilitySystemComponent.h" // GAS 입력 바인딩을 위해 포함
 
-// (신규) Enhanced Input 관련 헤더
+#include "PlayerSkillDataLibrary.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/PlayerController.h" // GetLocalPlayer()를 위해 필요
@@ -298,75 +298,66 @@ void APlayerCharacter::Input_CancelSkills()
 
 void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 {
-	// 1. 큐에 남은 인덱스가 없으면 턴 종료
+	// 1. 큐가 비었으면 진짜로 종료 (타이머 타고 들어온 마지막 호출)
 	if (SkillQueueIndices.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 완료 ==="));
 		GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
-		OnSkillQueueCleared_BPEvent.Broadcast();
-		EndAction();
+		OnSkillQueueCleared_BPEvent.Broadcast(); // UI 큐 비우기 신호
+		EndAction(); // 턴 종료
 		return;
 	}
 
-	// 2. 큐의 맨 앞 '인덱스'를 꺼냄 (원래 변수명 사용)
+	// 2. 인덱스 꺼내기
 	int32 SkillIndexToFire = SkillQueueIndices[0];
 	SkillQueueIndices.RemoveAt(0);
 
 	// (안전 장치)
 	if (!OwnedSkills.IsValidIndex(SkillIndexToFire))
 	{
-		UE_LOG(LogTemp, Error, TEXT("ExecuteNextSkillInQueue_UI: 큐에 잘못된 인덱스(%d)가 있었습니다."), SkillIndexToFire);
-		// 큐에 스킬이 더 남아있으면 다음 것을 시도
-		if (SkillQueueIndices.Num() > 0)
-		{
-			GetWorld()->GetTimerManager().SetTimer(
-				SkillQueueTimerHandle,
-				this,
-				&APlayerCharacter::ExecuteNextSkillInQueue_UI,
-				SkillExecutionDelay,
-				false
-			);
-		}
-		else
-		{
-			GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
-			EndAction();
-		}
+		// 에러나면 다음거 바로 실행
+		ExecuteNextSkillInQueue_UI();
 		return;
 	}
 
-	// 3. 스킬 데이터 가져오기
 	FPlayerSkillData& SkillData = OwnedSkills[SkillIndexToFire];
 
-	// 필수 요소 검사 로그
-	if (!GenericAttackAbilityClass)
+	// 필수 체크
+	if (!GenericAttackAbilityClass || !SkillData.SkillInfo)
 	{
-		UE_LOG(LogTemp, Error, TEXT("ERROR: BP_PlayerCharacter에 'GenericAttackAbilityClass'가 비어있습니다! 할당해주세요."));
+		UE_LOG(LogTemp, Error, TEXT("ERROR: 데이터 누락"));
 		return;
 	}
-	if (!SkillData.SkillInfo)
+
+	// ★ [수정 1] 대기 시간 계산 (애니메이션 길이)
+	float AnimDuration = 0.2f; // 기본값 (몽타주 없으면 이거 씀)
+
+	if (SkillData.SkillInfo->SkillMontage)
 	{
-		UE_LOG(LogTemp, Error, TEXT("ERROR: 스킬 데이터에 SkillInfo가 없습니다."));
-		return;
+		// 애니메이션 길이 + 0.1초(안전 여유값)
+		AnimDuration = SkillData.SkillInfo->SkillMontage->GetPlayLength() + 0.1f;
 	}
 
 	bool bSuccess = false;
 
-	// ───────── [수정됨] GAS로 스킬 실행 ─────────
+	// 3. GAS 실행
 	if (AbilitySystem)
 	{
 		FGameplayAbilitySpec* Spec = AbilitySystem->FindAbilitySpecFromClass(GenericAttackAbilityClass);
 		if (Spec)
 		{
+			// ★ [수정 2] 강화된 데미지 계산해서 Payload에 담기
+			float FinalDmg = (float)UPlayerSkillDataLibrary::GetEffectiveDamage(SkillData);
+
 			FGameplayEventData Payload;
 			Payload.OptionalObject = SkillData.SkillInfo;
 			Payload.Instigator = this;
 			Payload.Target = this;
+			Payload.EventMagnitude = FinalDmg; // <-- 여기에 데미지 전달
 
 			FGameplayTag TriggerTag = FGameplayTag::RequestGameplayTag(TEXT("Ability.Skill.Attack"));
 
-			// 실행 결과 받기 (int 반환값으로 성공 여부 추측 가능)
-			int32 Result = AbilitySystem->TriggerAbilityFromGameplayEvent(
+			AbilitySystem->TriggerAbilityFromGameplayEvent(
 				Spec->Handle,
 				AbilitySystem->AbilityActorInfo.Get(),
 				TriggerTag,
@@ -374,48 +365,32 @@ void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 				*AbilitySystem
 			);
 
-			// TriggerAbility는 void거나 복잡하므로, Spec이 Active 상태인지 확인하는 게 정확하지만 일단 넘어감
 			bSuccess = true;
-			UE_LOG(LogTemp, Warning, TEXT("GAS Trigger Signal Sent! (Tag: Ability.Skill.Attack)"));
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("ERROR: 어빌리티 시스템에 GA_SkillAttack이 등록되지 않았습니다. GiveAllSkills 확인 필요."));
 		}
 	}
 
-	// 결과에 따른 로그 출력
 	if (bSuccess)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("SKILL FIRED SUCCESS: %s"), *SkillData.GetSkillName().ToString());
+		UE_LOG(LogTemp, Warning, TEXT("SKILL FIRED: %s (Duration: %.2f)"), *SkillData.GetSkillName().ToString(), AnimDuration);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("SKILL FIRED FAILED: GAS 발동 실패"));
+		UE_LOG(LogTemp, Error, TEXT("SKILL FIRED FAILED"));
 	}
+
 	// 4. 쿨타임 적용
 	ApplySkillCooldown(SkillIndexToFire);
 
-	// 5. 큐(SkillQueueIndices)에 스킬이 더 남아있다면 딜레이 후 재호출
-	if (SkillQueueIndices.Num() > 0)
-	{
-		GetWorld()->GetTimerManager().SetTimer(
-			SkillQueueTimerHandle,
-			this,
-			&APlayerCharacter::ExecuteNextSkillInQueue_UI,
-			SkillExecutionDelay, // 0.2초
-			false
-		);
-	}
-	else
-	{
-		// 6. 마지막 스킬이었으므로, 즉시 턴 종료
-		// (주의: 몽타주 재생 시간과 별개로 턴이 즉시 종료되므로, 필요 시 EndAction 호출을 늦춰야 할 수도 있음)
-		UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 완료 ==="));
-		GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
-		OnSkillQueueCleared_BPEvent.Broadcast();
-		EndAction();
-	}
+	// 5. ★ [수정 3] 다음 행동 예약 (재귀 호출)
+	// 남은 스킬이 있든 없든, 이번 애니메이션이 끝날 때까지 기다려야 함.
+	// 큐가 비어있으면 다음번 호출 때 맨 위 'if (Num == 0)'에 걸려서 종료됨.
+	GetWorld()->GetTimerManager().SetTimer(
+		SkillQueueTimerHandle,
+		this,
+		&APlayerCharacter::ExecuteNextSkillInQueue_UI,
+		AnimDuration, // <--- 0.2초 대신 애니메이션 길이만큼 기다림
+		false
+	);
 }
 
 int32 APlayerCharacter::GetCurrentCooldownForSkill(int32 SkillIndex) const
