@@ -113,6 +113,16 @@ void ABattleManager::StartPlayerTurn()
 	TurnCount++;
 	UE_LOG(LogTemp, Warning, TEXT("TURN %d: PLAYER TURN"), TurnCount);
 	CurrentState = EBattleState::PlayerTurn;
+
+	// 모든 적에게 "다음 턴에 뭐 할지 미리 생각해놔!" 명령
+	for (AEnemyCharacter* Enemy : Enemies)
+	{
+		if (Enemy && !Enemy->bDead)
+		{
+			Enemy->DecideNextAction(); // 계산 후 PendingAction에 저장
+		}
+	}
+
 	if (PlayerRef)
 	{
 		// 1. (신규) 쿨타임 먼저 감소
@@ -128,42 +138,63 @@ void ABattleManager::StartEnemyTurn()
 {
 	UE_LOG(LogTemp, Warning, TEXT("TURN %d: ENEMY TURN"), TurnCount);
 	CurrentState = EBattleState::EnemyTurn;
-	ExecuteEnemyActions();
-	CheckSingleEnemyTimer();
+	CurrentEnemyActionIndex = 0;
+
+	// 첫 번째 적부터 실행 시작
+	ProcessNextEnemyAction();
+}
+
+// 순차 실행
+void ABattleManager::ProcessNextEnemyAction()
+{
+	// 1. 인덱스가 범위를 넘어가면 모든 적 행동 완료 -> 턴 종료
+	if (CurrentEnemyActionIndex >= Enemies.Num())
+	{
+		// 적 턴 끝났으니 플레이어 턴 준비
+		CheckSingleEnemyTimer(); // (기존 로직)
+
+		// 바로 넘기거나 딜레이 후 넘김
+		GetWorld()->GetTimerManager().SetTimer(TurnDelayHandle, this, &ABattleManager::StartPlayerTurn, 0.5f, false);
+		return;
+	}
+
+	// 2. 현재 순번 적 가져오기
+	AEnemyCharacter* CurrentEnemy = Enemies[CurrentEnemyActionIndex];
+
+	// 죽었거나 없으면 다음 놈으로 패스
+	if (!CurrentEnemy || CurrentEnemy->bDead)
+	{
+		CurrentEnemyActionIndex++;
+		ProcessNextEnemyAction(); // 재귀 호출
+		return;
+	}
+
+	// 3. 행동 실행! (ExecutePlannedAction 호출)
+	// 이 함수가 끝나면 적은 EndAction()을 부르고 -> 그게 EndCharacterTurn()을 부름
+	CurrentEnemy->ExecutePlannedAction();
 }
 
 void ABattleManager::EndCharacterTurn(ACharacterBase* Character)
 {
 	CheckBattleResult();
-	if (CurrentState == EBattleState::Victory || CurrentState == EBattleState::Defeat)
-	{
-		return;
-	}
+	if (CurrentState == EBattleState::Victory || CurrentState == EBattleState::Defeat) return;
 
-	// 전체 입력 잠금 0.2초
-	GetWorld()->GetTimerManager().SetTimerForNextTick([this, Character]()
-		{
-			GetWorld()->GetTimerManager().SetTimer(TurnDelayHandle, [this, Character]()
-				{
-					if (Cast<APlayerCharacter>(Character))
-						StartEnemyTurn();
-					else
-						StartPlayerTurn();
-				}, 0.2f, false);
-		});
+	// 누가 턴을 끝냈는지 확인
+	if (Cast<APlayerCharacter>(Character))
+	{
+		// 플레이어가 끝냄 -> 적 턴 시작
+		GetWorld()->GetTimerManager().SetTimer(TurnDelayHandle, this, &ABattleManager::StartEnemyTurn, 0.2f, false);
+	}
+	else if (Cast<AEnemyCharacter>(Character))
+	{
+		// 적 하나가 행동을 끝냄 -> 다음 적 실행!
+		CurrentEnemyActionIndex++;
+
+		// 약간의 딜레이(0.2초)를 주고 다음 적 행동 (너무 빠르면 정신없음)
+		GetWorld()->GetTimerManager().SetTimer(TurnDelayHandle, this, &ABattleManager::ProcessNextEnemyAction, 0.2f, false);
+	}
 }
 
-void ABattleManager::ExecuteEnemyActions()
-{
-	for (AEnemyCharacter* Enemy : Enemies)
-	{
-		if (Enemy && !Enemy->bDead)
-		{
-			Enemy->ExecuteAIAction();
-		}
-	}
-	EndCharacterTurn(nullptr); // 적 턴 일괄 종료
-}
 
 // ──────────────────────────────
 // 스폰 관련 (인덱스 기반 및 Possess 수정)
@@ -241,13 +272,21 @@ void ABattleManager::SpawnEnemiesForRound_Implementation()
 	if (!EnemyClass || !GridInterface) return;
 
 	TArray<int32> AvailableSpawnIndices = EnemySpawnIndices;
+	
+	// 이미 있는 적들의 위치를 후보에서 제거
+	for (AEnemyCharacter* ExistingEnemy : Enemies)
+	{
+		if (ExistingEnemy && !ExistingEnemy->bDead)
+		{
+			EnemySpawnIndices.Remove(ExistingEnemy->GridIndex);
+		}
+	}
+
 	int32 NumEnemiesToSpawn = 2;
 	int32 MaxSpawns = FMath::Min(NumEnemiesToSpawn, AvailableSpawnIndices.Num());
 
 	for (int32 i = 0; i < MaxSpawns; ++i)
 	{
-		if (AvailableSpawnIndices.Num() == 0) break;
-
 		int32 RandomArrayIndex = FMath::RandRange(0, AvailableSpawnIndices.Num() - 1);
 		int32 SpawnIndex = AvailableSpawnIndices[RandomArrayIndex];
 		AvailableSpawnIndices.RemoveAt(RandomArrayIndex);
@@ -279,6 +318,8 @@ void ABattleManager::SpawnEnemiesForRound_Implementation()
 			Enemies.Add(NewEnemy);
 		}
 	}
+
+	Enemies.RemoveAll([](AEnemyCharacter* E) { return E == nullptr || E->bDead; });
 }
 
 
