@@ -101,11 +101,13 @@ void ABattleManager::StartRound()
 void ABattleManager::EndRound()
 {
 	UE_LOG(LogTemp, Warning, TEXT("ROUND %d END"), CurrentRound);
-	for (AEnemyCharacter* Enemy : Enemies)
+	for (int32 i = Enemies.Num() - 1; i >= 0; --i)
 	{
-		if (Enemy) Enemy->Destroy();
+		if (!Enemies[i] || Enemies[i]->bDead)
+		{
+			Enemies.RemoveAt(i);
+		}
 	}
-	Enemies.Empty();
 }
 
 void ABattleManager::StartPlayerTurn()
@@ -154,7 +156,7 @@ void ABattleManager::ProcessNextEnemyAction()
 		CheckSingleEnemyTimer(); // (기존 로직)
 
 		// 바로 넘기거나 딜레이 후 넘김
-		GetWorld()->GetTimerManager().SetTimer(TurnDelayHandle, this, &ABattleManager::StartPlayerTurn, 0.5f, false);
+		GetWorld()->GetTimerManager().SetTimer(TurnDelayHandle, this, &ABattleManager::StartPlayerTurn, 0.2f, false);
 		return;
 	}
 
@@ -168,6 +170,7 @@ void ABattleManager::ProcessNextEnemyAction()
 		ProcessNextEnemyAction(); // 재귀 호출
 		return;
 	}
+	CurrentEnemy->StartAction();
 
 	// 3. 행동 실행! (ExecutePlannedAction 호출)
 	// 이 함수가 끝나면 적은 EndAction()을 부르고 -> 그게 EndCharacterTurn()을 부름
@@ -278,7 +281,7 @@ void ABattleManager::SpawnEnemiesForRound_Implementation()
 	{
 		if (ExistingEnemy && !ExistingEnemy->bDead)
 		{
-			EnemySpawnIndices.Remove(ExistingEnemy->GridIndex);
+			AvailableSpawnIndices.Remove(ExistingEnemy->GridIndex);
 		}
 	}
 

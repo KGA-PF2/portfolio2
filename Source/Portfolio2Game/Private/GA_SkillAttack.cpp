@@ -2,8 +2,10 @@
 #include "GA_SkillAttack.h"
 #include "CharacterBase.h"
 #include "BattleManager.h"
-#include "PlayerCharacter.h" // 아군/적군 판별용
-#include "Kismet/GameplayStatics.h" // Cascade 파티클 스폰용
+#include "PlayerCharacter.h"
+#include "EnemyCharacter.h"
+#include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 
@@ -62,9 +64,9 @@ void UGA_SkillAttack::ExecuteAttackSequence(ACharacterBase* Caster, USkillBase* 
 	);
 
 	// 종료/취소 시 어빌리티 종료 연결
-	PlayMontageTask->OnCompleted.AddDynamic(this, &UGA_SkillAttack::K2_EndAbility);
-	PlayMontageTask->OnInterrupted.AddDynamic(this, &UGA_SkillAttack::K2_EndAbility);
-	PlayMontageTask->OnCancelled.AddDynamic(this, &UGA_SkillAttack::K2_EndAbility);
+	PlayMontageTask->OnCompleted.AddDynamic(this, &UGA_SkillAttack::OnMontageEnded);
+	PlayMontageTask->OnInterrupted.AddDynamic(this, &UGA_SkillAttack::OnMontageEnded);
+	PlayMontageTask->OnCancelled.AddDynamic(this, &UGA_SkillAttack::OnMontageEnded);
 
 	// 3. "Event.Skill.Hit" 노티파이 대기 태스크
 	FGameplayTag HitTag = FGameplayTag::RequestGameplayTag(TEXT("Event.Skill.Hit"));
@@ -77,6 +79,20 @@ void UGA_SkillAttack::ExecuteAttackSequence(ACharacterBase* Caster, USkillBase* 
 	// 태스크 활성화
 	WaitEventTask->ReadyForActivation();
 	PlayMontageTask->ReadyForActivation();
+}
+
+// 애니메이션 종료 시 호출
+void UGA_SkillAttack::OnMontageEnded()
+{
+	ACharacterBase* Caster = Cast<ACharacterBase>(GetAvatarActorFromActorInfo());
+
+	// 어빌리티 종료
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+
+	if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Caster))
+	{
+		Enemy->EndAction();
+	}
 }
 
 void UGA_SkillAttack::OnMontageNotify(FGameplayEventData EventData)
@@ -126,17 +142,29 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 		FVector TargetPos = BM->GetWorldLocation(TargetCoord);
 		TargetPos += SkillInfo->EffectOffset;
 
-		if (SkillInfo->TileEffect)
+		// 1순위: 나이아가라가 있으면 나이아가라 재생
+		if (SkillInfo->NiagaraEffect)
+		{
+			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+				GetWorld(),
+				SkillInfo->NiagaraEffect,
+				TargetPos,
+				FRotator::ZeroRotator
+			);
+		}
+		// 2순위: 나이아가라가 없고 Cascade만 있으면 Cascade 재생
+		else if (SkillInfo->TileEffect)
 		{
 			UGameplayStatics::SpawnEmitterAtLocation(
 				GetWorld(),
 				SkillInfo->TileEffect,
 				TargetPos,
 				FRotator::ZeroRotator,
-				true, // Auto Destroy
+				true,
 				EPSCPoolMethod::AutoRelease
 			);
 		}
+		// 둘 다 없으면 아무것도 안 나옴
 
 		// 2. [데미지 처리] 유효한 캐릭터가 있는지 확인
 		ACharacterBase* TargetChar = BM->GetCharacterAt(TargetCoord);

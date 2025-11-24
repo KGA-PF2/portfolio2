@@ -63,6 +63,8 @@ public:
     // [신규] 2단계: 결정된 행동 실행 (적 턴에 호출)
     void ExecutePlannedAction();
 
+    // [신규] 월드 방향(동서남북)으로 즉시 이동하는 함수
+    void Action_MoveDirectly(EGridDirection WorldDir);
 
 private:
     // 조건 판별기

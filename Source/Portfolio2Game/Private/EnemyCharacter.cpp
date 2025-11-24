@@ -72,6 +72,37 @@ void AEnemyCharacter::ExecutePlannedAction()
 	PerformAction(PendingAction);
 }
 
+void AEnemyCharacter::Action_MoveDirectly(EGridDirection WorldDir)
+{
+	if (!AbilitySystem)
+	{
+		EndAction();
+		return;
+	}
+
+	// 변환 없이 바로 태그 매핑
+	FString MoveTag = "Ability.Move.Right";
+	switch (WorldDir)
+	{
+	case EGridDirection::Right: MoveTag = "Ability.Move.Right"; break;
+	case EGridDirection::Left:  MoveTag = "Ability.Move.Left"; break;
+	case EGridDirection::Up:    MoveTag = "Ability.Move.Up"; break;
+	case EGridDirection::Down:  MoveTag = "Ability.Move.Down"; break;
+	}
+
+	FGameplayTagContainer MoveTags;
+	MoveTags.AddTag(FGameplayTag::RequestGameplayTag(*MoveTag));
+
+	// 실행 시도
+	if (!AbilitySystem->TryActivateAbilitiesByTag(MoveTags))
+	{
+		// 만약 이동 실패(벽 등)하면 턴 넘김 (무한루프 방지)
+		EndAction();
+	}
+
+	bJustAttacked = false;
+}
+
 // ───────── 조건 판독기 ─────────
 bool AEnemyCharacter::CheckCondition(EAIConditionType Condition)
 {
@@ -278,23 +309,15 @@ void AEnemyCharacter::Action_MoveToBestAttackPos()
 
 	if (GetBestMovementToAttack(Skill, WorldMoveDir))
 	{
-		FString MoveTag = "Ability.Move.Right";
-		switch (WorldMoveDir) {
-		case EGridDirection::Right: MoveTag = "Ability.Move.Right"; break;
-		case EGridDirection::Left: MoveTag = "Ability.Move.Left"; break;
-		case EGridDirection::Up: MoveTag = "Ability.Move.Up"; break;
-		case EGridDirection::Down: MoveTag = "Ability.Move.Down"; break;
-		}
-		FGameplayTagContainer MoveTags;
-		MoveTags.AddTag(FGameplayTag::RequestGameplayTag(*MoveTag));
-
-		if (!AbilitySystem || !AbilitySystem->TryActivateAbilitiesByTag(MoveTags)) EndAction();
+		// ★ 여기서 Action_Move 대신 Action_MoveDirectly 사용!
+		Action_MoveDirectly(WorldMoveDir);
 	}
 	else
 	{
-		EndAction(); // 갈 곳 없음
+		UE_LOG(LogTemp, Warning, TEXT("No better position found. Waiting."));
+		bJustAttacked = false;
+		EndAction();
 	}
-	bJustAttacked = false;
 }
 
 // 스킬 사용
@@ -339,43 +362,117 @@ bool AEnemyCharacter::ExecuteSkill(USkillBase* SkillToUse)
 
 bool AEnemyCharacter::GetBestMovementToAttack(USkillBase* Skill, EGridDirection& OutWorldDir)
 {
-	if (!Skill || !PlayerRef) return false;
+
+	// [디버그 1] 필수 데이터 체크
+	if (!Skill)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[AI Fail] Skill is NULL! BP_EnemyCharacter에서 Skill_A를 할당했는지 확인하세요."));
+		return false;
+	}
+	if (!PlayerRef)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[AI Fail] PlayerRef is NULL!"));
+		return false;
+	}
+	if (!BattleManagerRef || !BattleManagerRef->GridInterface)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[AI Fail] GridInterface is NULL!"));
+		return false;
+	}
+
 	FIntPoint MyPos = GridCoord;
 	FIntPoint PlayerPos = PlayerRef->GridCoord;
 
+	// 1. 맵 크기 가져오기 (경계 검사용)
+	if (!BattleManagerRef->GridInterface) return false;
+	int32 MapW = IGridDataInterface::Execute_GetGridWidth(BattleManagerRef->GridActorRef);
+	int32 MapH = IGridDataInterface::Execute_GetGridHeight(BattleManagerRef->GridActorRef);
+
+	// 2. "명당(Sweet Spots)" 리스트 확보
+	// 명당이란? -> 내가 거기 서 있으면 플레이어를 때릴 수 있는 모든 좌표
+	// (적은 회전이 자유로우므로, 4방향 회전을 모두 가정한 공격 위치를 다 찾습니다)
 	TArray<FIntPoint> SweetSpots;
+
 	for (const FIntPoint& Point : Skill->AttackPattern)
 	{
-		// Y축 반전(-Point.Y)하여 4방향 역산 후보지 생성
-		int32 PX = Point.X; int32 PY = -Point.Y;
-		SweetSpots.Add(PlayerPos - FIntPoint(PX, PY));   // Right
-		SweetSpots.Add(PlayerPos - FIntPoint(-PX, -PY)); // Left
-		SweetSpots.Add(PlayerPos - FIntPoint(-PY, PX));  // Down
-		SweetSpots.Add(PlayerPos - FIntPoint(PY, -PX));  // Up
+		// Y축 반전(-Point.Y) 적용 (좌표계 통일)
+		int32 PX = Point.X;
+		int32 PY = -Point.Y;
+
+		// 플레이어 위치에서 역산 -> "내가 서야 할 위치"
+		SweetSpots.Add(PlayerPos - FIntPoint(PX, PY));   // 내가 Right 볼 때
+		SweetSpots.Add(PlayerPos - FIntPoint(-PX, -PY)); // 내가 Left 볼 때
+		SweetSpots.Add(PlayerPos - FIntPoint(-PY, PX));  // 내가 Down 볼 때
+		SweetSpots.Add(PlayerPos - FIntPoint(PY, -PX));  // 내가 Up 볼 때
 	}
 
-	int32 MinDist = 9999;
-	bool bFound = false;
+
+	// [디버그 2] 명당 계산 결과
+	if (SweetSpots.Num() == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[AI Fail] SweetSpots is Empty! 스킬 데이터(%s)의 AttackPattern에 좌표를 추가하세요."), *Skill->SkillName.ToString());
+		return false;
+	}
+
+	// 명당이 하나도 없으면(불가능한 스킬 등) 이동 불가
+	if (SweetSpots.Num() == 0) return false;
+
+
+	// 3. 내 상하좌우 4칸을 검사해서 "가장 좋은 칸" 찾기
+	int32 BestMinDist = 99999; // 가장 짧은 거리 기록용
+	bool bFoundValidMove = false;
+
+	// 상하좌우 탐색 순서 (Right, Left, Down, Up)
 	const FIntPoint Dirs[] = { FIntPoint(1,0), FIntPoint(-1,0), FIntPoint(0,1), FIntPoint(0,-1) };
 	const EGridDirection Enums[] = { EGridDirection::Right, EGridDirection::Left, EGridDirection::Down, EGridDirection::Up };
 
 	for (int i = 0; i < 4; ++i)
 	{
 		FIntPoint NextPos = MyPos + Dirs[i];
-		if (BattleManagerRef && BattleManagerRef->GetCharacterAt(NextPos) != nullptr) continue;
+
+		// ───────── [유효성 검사] 갈 수 없는 칸은 거름 ─────────
+
+		// A. 맵 밖인가?
+		if (NextPos.X < 0 || NextPos.X >= MapW || NextPos.Y < 0 || NextPos.Y >= MapH)
+			continue;
+
+		// B. 장애물(다른 캐릭터)이 있는가?
+		if (BattleManagerRef->GetCharacterAt(NextPos) != nullptr)
+			continue;
+
+		// ──────────────────────────────────────────────────
+
+		// C. 이 칸(NextPos)에서 "가장 가까운 명당"까지의 거리 측정
+		// (즉, 이쪽으로 가면 공격 위치랑 얼마나 가까워지는가?)
+		int32 LocalMinDist = 99999;
 
 		for (const FIntPoint& Spot : SweetSpots)
 		{
+			// 맨해튼 거리 (가로+세로 칸수)
 			int32 Dist = FMath::Abs(Spot.X - NextPos.X) + FMath::Abs(Spot.Y - NextPos.Y);
-			if (Dist < MinDist)
+
+			if (Dist < LocalMinDist)
 			{
-				MinDist = Dist;
-				OutWorldDir = Enums[i];
-				bFound = true;
+				LocalMinDist = Dist;
 			}
 		}
+
+		// D. 지금까지 찾은 칸들보다 이 칸이 더 명당에 가깝다면 선택
+		if (LocalMinDist < BestMinDist)
+		{
+			BestMinDist = LocalMinDist;
+			OutWorldDir = Enums[i]; // 이 방향이 정답이다
+			bFoundValidMove = true;
+		}
 	}
-	return bFound;
+
+	// [디버그 3] 최종 결과
+	if (!bFoundValidMove)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[AI Fail] 갈 수 있는 칸이 없거나 더 가까워질 수 없음 (Current: %d,%d)"), MyPos.X, MyPos.Y);
+	}
+
+	return bFoundValidMove;
 }
 
 // 스킬의 최대 사거리(전방 X축) 계산
