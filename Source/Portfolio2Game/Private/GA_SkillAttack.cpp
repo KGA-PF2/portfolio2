@@ -50,17 +50,35 @@ void UGA_SkillAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle, c
 
 void UGA_SkillAttack::ExecuteAttackSequence(ACharacterBase* Caster, USkillBase* SkillInfo)
 {
-	// 1. 몽타주가 없으면 즉시 발동 후 종료
-	if (!SkillInfo->SkillMontage)
+	// 1. 기본값 (플레이어용 DA 몽타주)
+	UAnimMontage* MontageToPlay = SkillInfo->SkillMontage;
+
+	// 2. 적 캐릭터라면? -> 적 전용 몽타주로 교체
+	if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Caster))
+	{
+		UAnimMontage* EnemyMontage = Enemy->GetAttackMontageForSkill(SkillInfo);
+		if (EnemyMontage)
+		{
+			MontageToPlay = EnemyMontage;
+		}
+	}
+
+	// 3. 몽타주 검사
+	if (!MontageToPlay)
 	{
 		ApplySkillEffects(Caster, SkillInfo);
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 		return;
 	}
 
-	// 2. 몽타주 재생 태스크
+	// 4. 재생 (섹션 이름 없이 처음부터 재생)
 	UAbilityTask_PlayMontageAndWait* PlayMontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-		this, NAME_None, SkillInfo->SkillMontage, 1.0f, NAME_None, false
+		this,
+		NAME_None,
+		MontageToPlay,
+		1.0f,
+		NAME_None,
+		false
 	);
 
 	// 종료/취소 시 어빌리티 종료 연결

@@ -95,8 +95,12 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	{
 		UE_LOG(LogTemp, Warning, TEXT("GA_Move: 이동 불가 (맵 경계)"));
 
-		// [수정] 플레이어가 아니면(적이면) 턴을 강제로 넘겨야 게임이 안 멈춤
-		if (!Cast<APlayerCharacter>(Character))
+		if (APlayerCharacter* Player = Cast<APlayerCharacter>(Character))
+		{
+			Player->bHasCommittedAction = false; // ★ 잠금 해제!
+		}
+		// 적이라면 강제 턴 종료 (게임 멈춤 방지)
+		else
 		{
 			Character->EndAction();
 		}
@@ -112,8 +116,11 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	{
 		UE_LOG(LogTemp, Warning, TEXT("GA_Move: 이동 불가 (장애물)"));
 
-		// [수정] 플레이어가 아니면(적이면) 턴을 강제로 넘겨야 게임이 안 멈춤
-		if (!Cast<APlayerCharacter>(Character))
+		if (APlayerCharacter* Player = Cast<APlayerCharacter>(Character))
+		{
+			Player->bHasCommittedAction = false; // ★ 잠금 해제!
+		}
+		else
 		{
 			Character->EndAction();
 		}

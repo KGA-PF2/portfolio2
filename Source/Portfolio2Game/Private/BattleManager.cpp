@@ -116,21 +116,48 @@ void ABattleManager::StartPlayerTurn()
 	UE_LOG(LogTemp, Warning, TEXT("TURN %d: PLAYER TURN"), TurnCount);
 	CurrentState = EBattleState::PlayerTurn;
 
-	// 모든 적에게 "다음 턴에 뭐 할지 미리 생각해놔!" 명령
+	// 모든 적의 순서 UI를 일단 끄기
 	for (AEnemyCharacter* Enemy : Enemies)
 	{
+		if (Enemy) Enemy->HideActionOrder();
+	}
+
+	// 모든 적 순서 지정 + 다음 행동 결정
+	for (int32 i = 0; i < Enemies.Num(); ++i)
+	{
+		AEnemyCharacter* Enemy = Enemies[i];
 		if (Enemy && !Enemy->bDead)
 		{
-			Enemy->DecideNextAction(); // 계산 후 PendingAction에 저장
+			// AI 생각 (행동 결정)
+			Enemy->DecideNextAction();
+
+			// 서브 아이콘(이동/대기 등) 가져오기
+			UTexture2D* SubIcon = nullptr;
+			if (OrderManagerRef)
+			{
+				SubIcon = OrderManagerRef->GetIconForAction(Enemy);
+			}
+
+			// 장전된 스킬이 있으면 무조건 빨강
+			bool bIsDangerous = (Enemy->ReservedSkill != nullptr) ||
+				(Enemy->PendingAction == EAIActionType::FireReserved);
+
+			Enemy->SetActionOrder(i + 1, SubIcon, bIsDangerous);
 		}
+	}
+
+	if (OrderManagerRef)
+	{
+		OrderManagerRef->UpdateActionQueue(Enemies);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("OrderManagerRef is NULL!"));
 	}
 
 	if (PlayerRef)
 	{
-		// 1. (신규) 쿨타임 먼저 감소
 		PlayerRef->ReduceCooldowns();
-
-		// 2. (신규) C++ 이벤트 방송 -> UI가 이 신호를 받음
 		PlayerRef->OnTurnStart_BPEvent.Broadcast();
 		PlayerRef->StartAction();
 	}

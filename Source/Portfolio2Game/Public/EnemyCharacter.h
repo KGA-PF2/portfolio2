@@ -4,6 +4,7 @@
 #include "CharacterBase.h"
 #include "SkillBase.h"
 #include "EnemyAIStructs.h"
+#include "Components/WidgetComponent.h"
 #include "EnemyCharacter.generated.h"
 
 class APlayerCharacter;
@@ -16,9 +17,10 @@ class AEnemyCharacter : public ACharacterBase
 
 public:
     AEnemyCharacter();
-
+    virtual void EndAction() override;
 protected:
     virtual void BeginPlay() override;
+    
 
 public:
 
@@ -41,6 +43,14 @@ public:
     UPROPERTY(VisibleAnywhere, Category = "AI|State")
     TObjectPtr<USkillBase> ReservedSkill;
 
+    // [신규] 결정된 이동 방향을 저장할 변수 (MoveToBestAttackPos용)
+    UPROPERTY(VisibleAnywhere, Category = "AI|State")
+    EGridDirection PendingMoveDir;
+
+    // [신규] 회전할 목표 방향 (RotateToPlayer용) - 아이콘 계산을 위해 미리 저장
+    UPROPERTY(VisibleAnywhere, Category = "AI|State")
+    EGridDirection PendingFaceDir;
+
     // 방금 공격했는지 체크 (후퇴 판단용)
     bool bJustAttacked = false;
 
@@ -54,6 +64,51 @@ public:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|State")
     TObjectPtr<UParticleSystem> DeathParticle;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|State")
+    TObjectPtr<UAnimMontage> ChargeMontage;
+
+    // ── 이동 ──
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
+    TObjectPtr<UAnimMontage> WalkFrontMontage;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
+    TObjectPtr<UAnimMontage> WalkBackMontage;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
+    TObjectPtr<UAnimMontage> WalkLeftMontage;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
+    TObjectPtr<UAnimMontage> WalkRightMontage;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
+    TObjectPtr<UAnimMontage> WalkStopMontage;
+
+    // ── 스킬 A ──
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Skill_A")
+    TObjectPtr<UAnimMontage> Montage_Atk_A;      // 공격
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Skill_A")
+    TObjectPtr<UAnimMontage> Montage_AtkReady_A; // 준비(Loop)
+
+    // ── 스킬 B ──
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Skill_B")
+    TObjectPtr<UAnimMontage> Montage_Atk_B;      // 공격
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Skill_B")
+    TObjectPtr<UAnimMontage> Montage_AtkReady_B; // 준비(Loop)
+
+    // ───────── 헬퍼 함수 ─────────
+
+    // 스킬 데이터에 맞는 공격 몽타주 반환
+    UAnimMontage* GetAttackMontageForSkill(USkillBase* SkillDef);
+
+    // 스킬 데이터에 맞는 준비 몽타주 반환
+    UAnimMontage* GetReadyMontageForSkill(USkillBase* SkillDef);
+
+    // 공격 준비 모션 재생 (Ready)
+    UFUNCTION(BlueprintCallable, Category = "Anim")
+    void PlayChargeMontageIfReady();
 
 
     // ───────── 행동 함수 ─────────
@@ -88,10 +143,12 @@ private:
     bool IsPlayerInSkillRange(USkillBase* Skill);
     bool IsPlayerInFrontCone();
     int32 GetMaxAttackRange(USkillBase* Skill);
-    bool GetBestMovementToAttack(USkillBase* Skill, EGridDirection& OutWorldDir);
-
+    
+    
 
 public:
+    bool GetBestMovementToAttack(USkillBase* Skill, EGridDirection& OutWorldDir);
+
     UFUNCTION(BlueprintCallable, Category = "AI")
     bool ExecuteSkill(USkillBase* SkillToUse);
 
@@ -102,5 +159,32 @@ public:
 
     UPROPERTY(BlueprintReadOnly, Category = "Battle")
     class APlayerCharacter* PlayerRef;
+
+
+public:
+    // ───────── UI / 순서 표시 ─────────
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+    TObjectPtr<UWidgetComponent> OrderWidgetComponent;
+
+    // 에디터에서 1st ~ 6th 이미지를 넣을 배열
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+    TArray<TObjectPtr<UTexture2D>> OrderIcons;
+
+    // 에디터에서 스킬 준비된 1st ~ 6th 이미지를 넣을 배열
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+    TArray<TObjectPtr<UTexture2D>> OrderIcons_Red;
+
+    // 순서 번호(1~6)를 받아 위젯을 켜는 함수
+    UFUNCTION(BlueprintCallable, Category = "UI")
+    void SetActionOrder(int32 OrderIndex, UTexture2D* SubActionIcon, bool bIsDangerous);
+
+    // 위젯을 숨기는 함수
+    UFUNCTION(BlueprintCallable, Category = "UI")
+    void HideActionOrder();
+
+    // (BP 연동) C++이 텍스처를 주면, BP가 위젯에 이미지를 꽂아주는 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "UI")
+    void BP_UpdateOrderIcon(UTexture2D* MainIcon, UTexture2D* SubIcon);
 
 };

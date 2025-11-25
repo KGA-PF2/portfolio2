@@ -6,12 +6,24 @@
 
 AEnemyCharacter::AEnemyCharacter()
 {
-	RotateToDirection(EGridDirection::Left, false);
+	// 위젯 컴포넌트 생성
+	OrderWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OrderWidgetComponent"));
+	OrderWidgetComponent->SetupAttachment(RootComponent);
+
+	// 설정: 월드 공간(캐릭터 옆에 둥둥), 원하는 크기로 그리기
+	OrderWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	OrderWidgetComponent->SetDrawAtDesiredSize(true);
+
+	// 위치: 캐릭터 오른쪽 위 (Y+, Z+)
+	OrderWidgetComponent->SetRelativeLocation(FVector(0.0f, 60.0f, 100.0f));
 }
 
 void AEnemyCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+	//순서 숨김
+	HideActionOrder();
 
     PlayerRef = Cast<APlayerCharacter>(
         UGameplayStatics::GetActorOfClass(GetWorld(), APlayerCharacter::StaticClass()));
@@ -20,6 +32,38 @@ void AEnemyCharacter::BeginPlay()
 	if (HasAuthority())
 	{
 		OnHealthChanged.AddDynamic(this, &AEnemyCharacter::HandleHealthChanged);
+	}
+}
+
+UAnimMontage* AEnemyCharacter::GetAttackMontageForSkill(USkillBase* SkillDef)
+{
+	if (SkillDef == Skill_A) return Montage_Atk_A;
+	if (SkillDef == Skill_B) return Montage_Atk_B;
+	return nullptr;
+}
+
+UAnimMontage* AEnemyCharacter::GetReadyMontageForSkill(USkillBase* SkillDef)
+{
+	if (SkillDef == Skill_A) return Montage_AtkReady_A;
+	if (SkillDef == Skill_B) return Montage_AtkReady_B;
+	return nullptr;
+}
+
+// ───────── 공격 준비 모션 재생 ─────────
+void AEnemyCharacter::PlayChargeMontageIfReady()
+{
+	// 이번 턴에 발사(FireReserved) 예정이라면 -> 준비 동작 재생
+	if (PendingAction == EAIActionType::FireReserved && ReservedSkill)
+	{
+		UAnimMontage* ReadyMontage = GetReadyMontageForSkill(ReservedSkill);
+
+		if (ReadyMontage && GetMesh()->GetAnimInstance())
+		{
+			if (!GetMesh()->GetAnimInstance()->Montage_IsPlaying(ReadyMontage))
+			{
+				PlayAnimMontage(ReadyMontage);
+			}
+		}
 	}
 }
 
@@ -50,7 +94,31 @@ void AEnemyCharacter::DecideNextAction()
 		if (bAllConditionsMet)
 		{
 			BestAction = Rule.ActionToExecute;
-			break; // 선착순 채택
+
+			// 이동/회전 저장
+			if (BestAction == EAIActionType::MoveToBestAttackPos)
+			{
+				USkillBase* TargetSkill = ReservedSkill ? ReservedSkill : Skill_A;
+
+				// 방향을 계산해서 PendingMoveDir에 저장 (결과가 false면 대기로 변경)
+				if (!GetBestMovementToAttack(TargetSkill, PendingMoveDir))
+				{
+					BestAction = EAIActionType::Wait;
+				}
+			}
+			else if (BestAction == EAIActionType::RotateToPlayer)
+			{
+				// 플레이어 위치와 비교해서 어느 쪽을 볼지 미리 계산
+				int32 XDiff = PlayerRef->GridCoord.X - GridCoord.X;
+				int32 YDiff = PlayerRef->GridCoord.Y - GridCoord.Y;
+
+				// X축 차이가 더 크면 앞/뒤, Y축 차이가 더 크면 좌/우
+				if (FMath::Abs(XDiff) >= FMath::Abs(YDiff))
+					PendingFaceDir = (XDiff > 0) ? EGridDirection::Right : EGridDirection::Left;
+				else
+					PendingFaceDir = (YDiff > 0) ? EGridDirection::Down : EGridDirection::Up;
+			}
+			break;
 		}
 	}
 
@@ -80,8 +148,44 @@ void AEnemyCharacter::Action_MoveDirectly(EGridDirection WorldDir)
 		return;
 	}
 
-	// 변환 없이 바로 태그 매핑
+	CurrentStopMontage = WalkStopMontage;
+
+	// ───────── 1. 몽타주 결정 (상대 방향 역산) ─────────
+	// 내가 보고 있는 방향(Facing)과 가야 할 월드 방향(WorldDir)을 비교해서
+	// 어떤 몽타주(앞/뒤/좌/우)를 틀어야 할지 결정합니다.
+
+	if (FacingDirection == EGridDirection::Right) // 나는 오른쪽(X+)을 보는 중
+	{
+		if (WorldDir == EGridDirection::Right) RunMontage = WalkFrontMontage; // 전진
+		else if (WorldDir == EGridDirection::Left)  RunMontage = WalkBackMontage;  // 후퇴
+		else if (WorldDir == EGridDirection::Up)    RunMontage = WalkLeftMontage;  // 왼쪽(Y-)으로 게걸음
+		else if (WorldDir == EGridDirection::Down)  RunMontage = WalkRightMontage; // 오른쪽(Y+)으로 게걸음
+	}
+	else if (FacingDirection == EGridDirection::Left) // 나는 왼쪽(X-)을 보는 중
+	{
+		if (WorldDir == EGridDirection::Left)  RunMontage = WalkFrontMontage; // 전진
+		else if (WorldDir == EGridDirection::Right) RunMontage = WalkBackMontage;  // 후퇴
+		else if (WorldDir == EGridDirection::Down)  RunMontage = WalkLeftMontage;  // 왼쪽(Y+)으로 게걸음
+		else if (WorldDir == EGridDirection::Up)    RunMontage = WalkRightMontage; // 오른쪽(Y-)으로 게걸음
+	}
+	else if (FacingDirection == EGridDirection::Up) // 나는 위쪽(Y-)을 보는 중
+	{
+		if (WorldDir == EGridDirection::Up)    RunMontage = WalkFrontMontage;
+		else if (WorldDir == EGridDirection::Down)  RunMontage = WalkBackMontage;
+		else if (WorldDir == EGridDirection::Left)  RunMontage = WalkLeftMontage;  // 왼쪽(X-)
+		else if (WorldDir == EGridDirection::Right) RunMontage = WalkRightMontage; // 오른쪽(X+)
+	}
+	else if (FacingDirection == EGridDirection::Down) // 나는 아래쪽(Y+)을 보는 중
+	{
+		if (WorldDir == EGridDirection::Down)  RunMontage = WalkFrontMontage;
+		else if (WorldDir == EGridDirection::Up)    RunMontage = WalkBackMontage;
+		else if (WorldDir == EGridDirection::Right) RunMontage = WalkLeftMontage;  // 왼쪽(X+)
+		else if (WorldDir == EGridDirection::Left)  RunMontage = WalkRightMontage; // 오른쪽(X-)
+	}
+
+	// ───────── 2. GAS 태그 결정 (월드 방향 그대로 사용) ─────────
 	FString MoveTag = "Ability.Move.Right";
+
 	switch (WorldDir)
 	{
 	case EGridDirection::Right: MoveTag = "Ability.Move.Right"; break;
@@ -90,18 +194,19 @@ void AEnemyCharacter::Action_MoveDirectly(EGridDirection WorldDir)
 	case EGridDirection::Down:  MoveTag = "Ability.Move.Down"; break;
 	}
 
+	// ───────── 3. 실행 ─────────
 	FGameplayTagContainer MoveTags;
 	MoveTags.AddTag(FGameplayTag::RequestGameplayTag(*MoveTag));
 
-	// 실행 시도
+	// GAS 실행 시도 (여기서 내부적으로 StartVisualMove -> PlayAnimMontage(RunMontage)가 호출됨)
 	if (!AbilitySystem->TryActivateAbilitiesByTag(MoveTags))
 	{
-		// 만약 이동 실패(벽 등)하면 턴 넘김 (무한루프 방지)
-		EndAction();
+		EndAction(); // 실패 시 턴 넘김
 	}
 
 	bJustAttacked = false;
 }
+
 
 // ───────── 조건 판독기 ─────────
 bool AEnemyCharacter::CheckCondition(EAIConditionType Condition)
@@ -213,18 +318,26 @@ void AEnemyCharacter::Action_Move(EGridDirection RelativeDir)
 		return;
 	}
 
-	FString MoveTag = "Ability.Move.Right"; // Default
+	CurrentStopMontage = WalkStopMontage;
 
-	// 예: 내가 Right(X+)를 보고 있다.
-	// 전진(Rel.Right) -> World Right
-	// 후진(Rel.Left)  -> World Left
-	// 왼쪽(Rel.Up)    -> World Up
-	// 오른쪽(Rel.Down)-> World Down
+	// 1. 방향에 따라 RunMontage 교체 (CharacterBase의 변수를 덮어씌움)
+	switch (RelativeDir)
+	{
+	case EGridDirection::Right: // 전진
+		RunMontage = WalkFrontMontage;
+		break;
+	case EGridDirection::Left:  // 후퇴
+		RunMontage = WalkBackMontage;
+		break;
+	case EGridDirection::Up:    // 왼쪽 게걸음
+		RunMontage = WalkLeftMontage;
+		break;
+	case EGridDirection::Down:  // 오른쪽 게걸음
+		RunMontage = WalkRightMontage;
+		break;
+	}
 
-	// 예: 내가 Up(Y-)를 보고 있다.
-	// 전진(Rel.Right) -> World Up
-	// 후진(Rel.Left)  -> World Down
-	// 왼쪽(Rel.Up)    -> World Left (Y-에서 왼쪽은 X-)
+	FString MoveTag = "Ability.Move.Right";
 
 	EGridDirection FinalWorldDir = EGridDirection::Right;
 
@@ -291,33 +404,13 @@ void AEnemyCharacter::Action_ReserveSkill(USkillBase* Skill)
 
 void AEnemyCharacter::Action_RotateToPlayer()
 {
-	int32 XDiff = PlayerRef->GridCoord.X - GridCoord.X;
-	int32 YDiff = PlayerRef->GridCoord.Y - GridCoord.Y;
-	EGridDirection TargetDir = FacingDirection;
-
-	if (FMath::Abs(XDiff) >= FMath::Abs(YDiff)) TargetDir = (XDiff > 0) ? EGridDirection::Right : EGridDirection::Left;
-	else TargetDir = (YDiff > 0) ? EGridDirection::Down : EGridDirection::Up;
-
-	RequestRotation(TargetDir, nullptr);
+	RequestRotation(PendingFaceDir, nullptr);
 	bJustAttacked = false;
 }
 
 void AEnemyCharacter::Action_MoveToBestAttackPos()
 {
-	USkillBase* Skill = ReservedSkill ? ReservedSkill : Skill_A;
-	EGridDirection WorldMoveDir;
-
-	if (GetBestMovementToAttack(Skill, WorldMoveDir))
-	{
-		// ★ 여기서 Action_Move 대신 Action_MoveDirectly 사용!
-		Action_MoveDirectly(WorldMoveDir);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("No better position found. Waiting."));
-		bJustAttacked = false;
-		EndAction();
-	}
+	Action_MoveDirectly(PendingMoveDir);
 }
 
 // 스킬 사용
@@ -573,4 +666,60 @@ void AEnemyCharacter::Die()
 			this->SetActorHiddenInGame(true);
 			this->Destroy();
 		}, DestroyDelay, false);
+}
+
+void AEnemyCharacter::SetActionOrder(int32 OrderIndex, UTexture2D* SubActionIcon, bool bIsDangerous)
+{
+	// 1. 배열 인덱스로 변환 (1st -> 0, 2nd -> 1 ...)
+	int32 ArrayIdx = OrderIndex - 1;
+
+	// 2. 메인 아이콘(숫자) 결정
+	UTexture2D* MainIconToUse = nullptr;
+
+	if (bIsDangerous)
+	{
+		// 위험(공격 장전/발사) 상태면 '빨간색' 배열 우선 사용
+		if (OrderIcons_Red.IsValidIndex(ArrayIdx))
+		{
+			MainIconToUse = OrderIcons_Red[ArrayIdx];
+		}
+		// 혹시 빨간 아이콘이 비어있다면 흰색이라도 사용 (안전장치)
+		else if (OrderIcons.IsValidIndex(ArrayIdx))
+		{
+			MainIconToUse = OrderIcons[ArrayIdx];
+		}
+	}
+	else
+	{
+		// 평상시는 '흰색' 배열 사용
+		if (OrderIcons.IsValidIndex(ArrayIdx))
+		{
+			MainIconToUse = OrderIcons[ArrayIdx];
+		}
+	}
+
+	// 3. 아이콘이 결정되었으면 UI 업데이트 요청
+	if (MainIconToUse)
+	{
+		BP_UpdateOrderIcon(MainIconToUse, SubActionIcon);
+		if (OrderWidgetComponent)
+		{
+			OrderWidgetComponent->SetVisibility(true);
+		}		
+	}
+}
+void AEnemyCharacter::HideActionOrder()
+{
+	if (OrderWidgetComponent)
+	{
+		OrderWidgetComponent->SetVisibility(false);
+	}
+}
+
+void AEnemyCharacter::EndAction()
+{
+	// 행동이 끝나면 내 순서표 끄기
+	HideActionOrder();
+
+	Super::EndAction(); // 부모(CharacterBase)의 턴 종료 로직 실행
 }

@@ -46,6 +46,10 @@ public:
 
 
 public:
+	virtual void StartAction() override;
+
+	virtual void EndAction() override;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Turn System")
 	float InputCooldown = 0.3f; // 0.3초 쿨타임
 
@@ -68,11 +72,14 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void ReduceCooldowns();
 
+	// 이번 턴에 이미 행동(이동/스킬)을 했는지 체크
+	bool bHasCommittedAction = false;
 
 private:
 	bool bInputLocked = false;  // 입력 잠금 여부
 	FTimerHandle InputLockTimerHandle;
 
+	void SetInputEnabled(bool bEnabled);
 
 protected:
 	// ❌ (제거) BeginPlay() (부모 클래스(CharacterBase)가 BattleManager를 찾음)
