@@ -129,7 +129,7 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 
 	FIntPoint Origin = Caster->GridCoord;
 	EGridDirection Facing = Caster->FacingDirection;
-	float FinalDamage = (float)SkillInfo->BaseDamage; // 플레이어라면 강화 수치 합산 로직 추가 가능
+	float FinalDamage = (CachedDamage > 0.0f) ? CachedDamage : (float)SkillInfo->BaseDamage;
 
 	for (const FIntPoint& Point : SkillInfo->AttackPattern)
 	{
