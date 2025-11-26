@@ -5,7 +5,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameplayAbilitySpec.h"
 #include "AbilitySystemComponent.h" // GAS 입력 바인딩을 위해 포함
-
+#include "EnhancedInputSubsystems.h"
 #include "PlayerSkillDataLibrary.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -16,6 +16,24 @@ APlayerCharacter::APlayerCharacter()
 	bCanAct = false;
 }
 
+void APlayerCharacter::StartAction()
+{
+	Super::StartAction();
+
+	bHasCommittedAction = false;
+
+	SetInputEnabled(true);
+}
+
+void APlayerCharacter::EndAction()
+{
+
+	SetInputEnabled(false);
+
+	bHasCommittedAction = true; // 혹시 모르니 잠금
+
+	Super::EndAction();
+}
 
 void APlayerCharacter::PossessedBy(AController* NewController)
 {
@@ -93,14 +111,33 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	}
 }
 
+void APlayerCharacter::SetInputEnabled(bool bEnabled)
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
+		{
+			if (bEnabled)
+			{
+				// 중복 방지를 위해 일단 지웠다 추가 (안전빵)
+				Subsystem->RemoveMappingContext(PlayerMoveContext);
+				Subsystem->AddMappingContext(PlayerMoveContext, 1);
+			}
+			else
+			{
+				Subsystem->RemoveMappingContext(PlayerMoveContext);
+			}
+		}
+	}
+}
 
 // (기존) 입력 래퍼 함수 구현 
 void APlayerCharacter::Input_MoveUp()
 {
-	if (bInputLocked) return; // 잠금 중이면 무시
-
+	if (!bCanAct || bInputLocked || bHasCommittedAction) return;
 	if (AbilitySystem)
 	{
+		bHasCommittedAction = true;
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveUp);
 		LockInputTemporarily();
 	}
@@ -108,9 +145,9 @@ void APlayerCharacter::Input_MoveUp()
 
 void APlayerCharacter::Input_MoveDown()
 {
-	if (bInputLocked) return;
-	if (AbilitySystem)
+	if (!bCanAct || bInputLocked || bHasCommittedAction) return;	if (AbilitySystem)
 	{
+		bHasCommittedAction = true;
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveDown);
 		LockInputTemporarily();
 	}
@@ -118,9 +155,9 @@ void APlayerCharacter::Input_MoveDown()
 
 void APlayerCharacter::Input_MoveLeft()
 {
-	if (bInputLocked) return;
-	if (AbilitySystem)
+	if (!bCanAct || bInputLocked || bHasCommittedAction) return;	if (AbilitySystem)
 	{
+		bHasCommittedAction = true;
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveLeft);
 		LockInputTemporarily();
 	}
@@ -128,9 +165,9 @@ void APlayerCharacter::Input_MoveLeft()
 
 void APlayerCharacter::Input_MoveRight()
 {
-	if (bInputLocked) return;
-	if (AbilitySystem)
+	if (!bCanAct || bInputLocked || bHasCommittedAction) return;	if (AbilitySystem)
 	{
+		bHasCommittedAction = true;
 		AbilitySystem->AbilityLocalInputPressed(PlayerAbilityInputID::MoveRight);
 		LockInputTemporarily();
 	}
@@ -139,8 +176,7 @@ void APlayerCharacter::Input_MoveRight()
 // Q: 반시계 회전 (Right -> Up -> Left -> Down)
 void APlayerCharacter::Input_RotateCCW()
 {
-	if (bInputLocked || !bCanAct) return;
-
+	if (!bCanAct || bInputLocked || bHasCommittedAction) return;
 	EGridDirection NewDir = FacingDirection;
 	switch (FacingDirection)
 	{
@@ -152,13 +188,13 @@ void APlayerCharacter::Input_RotateCCW()
 
 	// 몽타주와 함께 요청 (없으면 즉시 회전)
 	RequestRotation(NewDir, Montage_RotateCCW);
+	bHasCommittedAction = true;
 }
 
 // E: 시계 회전 (Right -> Down -> Left -> Up)
 void APlayerCharacter::Input_RotateCW()
 {
-	if (bInputLocked || !bCanAct) return;
-
+	if (!bCanAct || bInputLocked || bHasCommittedAction) return;
 	EGridDirection NewDir = FacingDirection;
 	switch (FacingDirection)
 	{
@@ -169,13 +205,13 @@ void APlayerCharacter::Input_RotateCW()
 	}
 
 	RequestRotation(NewDir, Montage_RotateCW);
+	bHasCommittedAction = true;
 }
 
 // R: 뒤로 돌기
 void APlayerCharacter::Input_Rotate180()
 {
-	if (bInputLocked || !bCanAct) return;
-
+	if (!bCanAct || bInputLocked || bHasCommittedAction) return;
 	EGridDirection NewDir = FacingDirection;
 	switch (FacingDirection)
 	{
@@ -186,6 +222,7 @@ void APlayerCharacter::Input_Rotate180()
 	}
 
 	RequestRotation(NewDir, Montage_Rotate180);
+	bHasCommittedAction = true;
 }
 
 void APlayerCharacter::LockInputTemporarily()
@@ -274,6 +311,7 @@ void APlayerCharacter::Input_ExecuteSkills()
 	if (bInputLocked || !bCanAct) return; // 행동 불가시 무시
 	if (SkillQueueIndices.Num() == 0) return; // 큐가 비었으면 무시
 
+	bHasCommittedAction = true;
 	LockInputTemporarily(); // 입력 잠금.
 
 	UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 시작 ==="));

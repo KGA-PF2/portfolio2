@@ -2,8 +2,10 @@
 #include "GA_SkillAttack.h"
 #include "CharacterBase.h"
 #include "BattleManager.h"
-#include "PlayerCharacter.h" // 아군/적군 판별용
-#include "Kismet/GameplayStatics.h" // Cascade 파티클 스폰용
+#include "PlayerCharacter.h"
+#include "EnemyCharacter.h"
+#include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 
@@ -48,23 +50,41 @@ void UGA_SkillAttack::ActivateAbility(const FGameplayAbilitySpecHandle Handle, c
 
 void UGA_SkillAttack::ExecuteAttackSequence(ACharacterBase* Caster, USkillBase* SkillInfo)
 {
-	// 1. 몽타주가 없으면 즉시 발동 후 종료
-	if (!SkillInfo->SkillMontage)
+	// 1. 기본값 (플레이어용 DA 몽타주)
+	UAnimMontage* MontageToPlay = SkillInfo->SkillMontage;
+
+	// 2. 적 캐릭터라면? -> 적 전용 몽타주로 교체
+	if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Caster))
+	{
+		UAnimMontage* EnemyMontage = Enemy->GetAttackMontageForSkill(SkillInfo);
+		if (EnemyMontage)
+		{
+			MontageToPlay = EnemyMontage;
+		}
+	}
+
+	// 3. 몽타주 검사
+	if (!MontageToPlay)
 	{
 		ApplySkillEffects(Caster, SkillInfo);
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 		return;
 	}
 
-	// 2. 몽타주 재생 태스크
+	// 4. 재생 (섹션 이름 없이 처음부터 재생)
 	UAbilityTask_PlayMontageAndWait* PlayMontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-		this, NAME_None, SkillInfo->SkillMontage, 1.0f, NAME_None, false
+		this,
+		NAME_None,
+		MontageToPlay,
+		1.0f,
+		NAME_None,
+		false
 	);
 
 	// 종료/취소 시 어빌리티 종료 연결
-	PlayMontageTask->OnCompleted.AddDynamic(this, &UGA_SkillAttack::K2_EndAbility);
-	PlayMontageTask->OnInterrupted.AddDynamic(this, &UGA_SkillAttack::K2_EndAbility);
-	PlayMontageTask->OnCancelled.AddDynamic(this, &UGA_SkillAttack::K2_EndAbility);
+	PlayMontageTask->OnCompleted.AddDynamic(this, &UGA_SkillAttack::OnMontageEnded);
+	PlayMontageTask->OnInterrupted.AddDynamic(this, &UGA_SkillAttack::OnMontageEnded);
+	PlayMontageTask->OnCancelled.AddDynamic(this, &UGA_SkillAttack::OnMontageEnded);
 
 	// 3. "Event.Skill.Hit" 노티파이 대기 태스크
 	FGameplayTag HitTag = FGameplayTag::RequestGameplayTag(TEXT("Event.Skill.Hit"));
@@ -77,6 +97,20 @@ void UGA_SkillAttack::ExecuteAttackSequence(ACharacterBase* Caster, USkillBase* 
 	// 태스크 활성화
 	WaitEventTask->ReadyForActivation();
 	PlayMontageTask->ReadyForActivation();
+}
+
+// 애니메이션 종료 시 호출
+void UGA_SkillAttack::OnMontageEnded()
+{
+	ACharacterBase* Caster = Cast<ACharacterBase>(GetAvatarActorFromActorInfo());
+
+	// 어빌리티 종료
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+
+	if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Caster))
+	{
+		Enemy->EndAction();
+	}
 }
 
 void UGA_SkillAttack::OnMontageNotify(FGameplayEventData EventData)
@@ -95,7 +129,7 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 
 	FIntPoint Origin = Caster->GridCoord;
 	EGridDirection Facing = Caster->FacingDirection;
-	float FinalDamage = (float)SkillInfo->BaseDamage; // 플레이어라면 강화 수치 합산 로직 추가 가능
+	float FinalDamage = (CachedDamage > 0.0f) ? CachedDamage : (float)SkillInfo->BaseDamage;
 
 	for (const FIntPoint& Point : SkillInfo->AttackPattern)
 	{
@@ -126,17 +160,29 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 		FVector TargetPos = BM->GetWorldLocation(TargetCoord);
 		TargetPos += SkillInfo->EffectOffset;
 
-		if (SkillInfo->TileEffect)
+		// 1순위: 나이아가라가 있으면 나이아가라 재생
+		if (SkillInfo->NiagaraEffect)
+		{
+			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+				GetWorld(),
+				SkillInfo->NiagaraEffect,
+				TargetPos,
+				FRotator::ZeroRotator
+			);
+		}
+		// 2순위: 나이아가라가 없고 Cascade만 있으면 Cascade 재생
+		else if (SkillInfo->TileEffect)
 		{
 			UGameplayStatics::SpawnEmitterAtLocation(
 				GetWorld(),
 				SkillInfo->TileEffect,
 				TargetPos,
 				FRotator::ZeroRotator,
-				true, // Auto Destroy
+				true,
 				EPSCPoolMethod::AutoRelease
 			);
 		}
+		// 둘 다 없으면 아무것도 안 나옴
 
 		// 2. [데미지 처리] 유효한 캐릭터가 있는지 확인
 		ACharacterBase* TargetChar = BM->GetCharacterAt(TargetCoord);

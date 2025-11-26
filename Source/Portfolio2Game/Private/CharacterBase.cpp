@@ -350,31 +350,54 @@ void ACharacterBase::Tick(float DeltaTime)
 
 	if (bIsVisualMoving)
 	{
-		// 시간 누적
+		// 1. 시간 누적 및 진행률(Alpha) 계산
 		VisualMoveTimeElapsed += DeltaTime;
-
-		// 진행률 계산 (0.0 ~ 1.0)
-		// 0.1초가 지나면 무조건 1.0이 됨
 		float Alpha = FMath::Clamp(VisualMoveTimeElapsed / VisualMoveDuration, 0.0f, 1.0f);
 
-		// 위치 보간 (Lerp: Start에서 Dest까지 Alpha만큼 이동)
+		// 2. 위치 보간 (Lerp)
 		FVector NewLoc = FMath::Lerp(VisualMoveStartLocation, VisualMoveDestination, Alpha);
 		SetActorLocation(NewLoc);
 
-		// 0.1초가 지났다면 (Alpha가 1.0이면) 도착 처리
+		// 3. [도착 판정]
 		if (Alpha >= 1.0f)
 		{
-			// 1. 위치를 목표점에 강제로 박아넣음
+			// A. 위치 확정 & 이동 플래그 끄기
 			SetActorLocation(VisualMoveDestination);
 			bIsVisualMoving = false;
 
-			// 2. 애니메이션 즉시 차단
+			// B. 뛰는 모션(RunMontage) 강제 종료 (잔상/제자리 달리기 방지)
 			if (RunMontage && GetMesh()->GetAnimInstance())
 			{
-				GetMesh()->GetAnimInstance()->Montage_Stop(0.0f, RunMontage);
+				// 0.1초 동안 부드럽게 멈춤 (즉시 뚝 끊기지 않게)
+				GetMesh()->GetAnimInstance()->Montage_Stop(0.1f, RunMontage);
 			}
 
-			// 3. HP바 위치 갱신 및 켜기
+			// C. 대기 시간 계산 (기본 0.25초: 숨 고를 시간 확보)
+			float WaitTime = 0.25f;
+
+			// D. 정지 몽타주(CurrentStopMontage) 재생
+			if (CurrentStopMontage && GetMesh()->GetAnimInstance())
+			{
+				float Duration = PlayAnimMontage(CurrentStopMontage);
+
+				// 몽타주가 정상 재생됐다면, 그 길이만큼 기다림
+				if (Duration > 0.0f)
+				{
+					WaitTime = Duration;
+				}
+			}
+
+			// E. 계산된 시간만큼 기다렸다가 턴 종료
+			// (정지 모션이 없어도 최소 0.25초는 대기하므로 적이 급발진하지 않음)
+			GetWorld()->GetTimerManager().SetTimer(
+				StopAnimTimerHandle,
+				this,
+				&ACharacterBase::OnStopAnimEnded,
+				WaitTime,
+				false
+			);
+
+			// F. HP바 위치 갱신 (기존 로직 유지)
 			if (BattleManagerRef && BattleManagerRef->GridActorRef)
 			{
 				AGridISM* Grid = Cast<AGridISM>(BattleManagerRef->GridActorRef);
@@ -392,11 +415,15 @@ void ACharacterBase::Tick(float DeltaTime)
 					CachedGridIndex = GridIndex;
 				}
 			}
-
-			// 4. 턴 종료
-			EndAction();
 		}
 	}
+}
+
+void ACharacterBase::OnStopAnimEnded()
+{
+	// 변수 초기화 (다음 턴을 위해)
+	CurrentStopMontage = nullptr;
+	EndAction();
 }
 
 // 이동 시작 (내부 함수)
