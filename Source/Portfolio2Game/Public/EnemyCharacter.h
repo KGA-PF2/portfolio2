@@ -160,6 +160,11 @@ public:
     UPROPERTY(BlueprintReadOnly, Category = "Battle")
     class APlayerCharacter* PlayerRef;
 
+    UFUNCTION()
+    void FinishDying();
+
+    // [신규] 맵 이동 등으로 액터가 파괴될 때 타이머를 끄기 위한 오버라이드
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
     // ───────── UI / 순서 표시 ─────────

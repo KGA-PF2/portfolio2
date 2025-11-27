@@ -3,12 +3,12 @@
 #include "PlayerCharacter.h"
 #include "BattleManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "PortfolioGameInstance.h"
 #include "GameplayAbilitySpec.h"
 #include "AbilitySystemComponent.h" // GAS 입력 바인딩을 위해 포함
 #include "EnhancedInputSubsystems.h"
 #include "PlayerSkillDataLibrary.h"
 #include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
 #include "GameFramework/PlayerController.h" // GetLocalPlayer()를 위해 필요
 
 APlayerCharacter::APlayerCharacter()
@@ -39,26 +39,49 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	// 1. 서버에서 ASC 초기화
+	// 1. ASC 초기화 (기존 코드)
 	if (AbilitySystem)
 	{
 		AbilitySystem->InitAbilityActorInfo(this, this);
 	}
 
-	// 2. (신규) 로컬 플레이어 컨트롤러에만 WASD용 매핑 컨텍스트 추가
+	// 2. ★ [신규] 데이터 로드 (GameInstance 체크)
+	// (BeginPlay 대신 여기서 처리합니다)
+	if (HasAuthority())
+	{
+		UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance());
+
+		// 저장된 데이터가 있다면 불러오기
+		if (GI && GI->HasSavedData())
+		{
+			// 체력 복구
+			if (Attributes)
+			{
+				Attributes->InitHealth(GI->SavedMaxHP);
+				Attributes->SetHealth_Internal(GI->SavedCurrentHP);
+			}
+			// 스킬 복구
+			OwnedSkills = GI->SavedSkills;
+
+			UE_LOG(LogTemp, Warning, TEXT("[Player] Data Loaded from GI (HP: %.0f)"), GI->SavedCurrentHP);
+		}
+		// 저장된 게 없다면 (첫 판) -> 기본 초기화
+		else
+		{
+			InitAttributes();
+			GiveAllSkills();
+		}
+	}
+
+	// 3. 입력 컨텍스트 설정 (기존 코드)
 	APlayerController* PC = Cast<APlayerController>(NewController);
 	if (PC)
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
 		{
-			// (중요) PlayerMoveContext를 추가합니다. (BP의 컨텍스트(0)보다 높은 Priority(1)로 설정)
 			if (PlayerMoveContext)
 			{
 				Subsystem->AddMappingContext(PlayerMoveContext, 1);
-			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("%s: 'PlayerMoveContext'가 할당되지 않았습니다. BP_PlayerCharacter에서 설정하세요."), *GetName());
 			}
 		}
 	}
@@ -103,7 +126,10 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 			EnhancedInputComponent->BindAction(IA_RotateCW, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_RotateCW);
 		if (IA_Rotate180)
 			EnhancedInputComponent->BindAction(IA_Rotate180, ETriggerEvent::Triggered, this, &APlayerCharacter::Input_Rotate180);
-
+		if (IA_DebugClear)
+		{
+			EnhancedInputComponent->BindAction(IA_DebugClear, ETriggerEvent::Started, this, &APlayerCharacter::Input_DebugStageClear);
+		}
 	}
 	else
 	{
@@ -223,6 +249,15 @@ void APlayerCharacter::Input_Rotate180()
 
 	RequestRotation(NewDir, Montage_Rotate180);
 	bHasCommittedAction = true;
+}
+
+void APlayerCharacter::Input_DebugStageClear()
+{
+	if (BattleManagerRef)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Debug] Force Stage Clear!"));
+		BattleManagerRef->ForceStageClear();
+	}
 }
 
 void APlayerCharacter::LockInputTemporarily()
@@ -373,7 +408,7 @@ void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 	if (SkillData.SkillInfo->SkillMontage)
 	{
 		// 애니메이션 길이 + 0.1초(안전 여유값)
-		AnimDuration = SkillData.SkillInfo->SkillMontage->GetPlayLength() + 0.1f;
+		AnimDuration = SkillData.SkillInfo->SkillMontage->GetPlayLength() + 0.3f;
 	}
 
 	bool bSuccess = false;
