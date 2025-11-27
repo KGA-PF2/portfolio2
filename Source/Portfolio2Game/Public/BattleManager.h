@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GridDataInterface.h"
+#include "EnemyOrderManager.h"
 #include "Camera/CameraActor.h"
 #include "BattleManager.generated.h"
 
@@ -35,6 +36,9 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Managers")
+	TObjectPtr<AEnemyOrderManager> OrderManagerRef;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Battle")
 	EBattleState CurrentState = EBattleState::None;

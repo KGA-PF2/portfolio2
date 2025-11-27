@@ -21,8 +21,17 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 	// 1. 컴포넌트 가져오기
 	ACharacterBase* Character = Cast<ACharacterBase>(ActorInfo->AvatarActor.Get());
+
+	// 디버그 로그
+	if (Character)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("GA_Move Try Activate: %s, bCanAct: %d"), *Character->GetName(), Character->bCanAct);
+	}
+
 	if (!Character || !Character->bCanAct)
 	{
+		// 실패했을 때만 턴을 종료해야 함 (게임 멈춤 방지)
+		if (Character) Character->EndAction();
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
@@ -32,108 +41,99 @@ void UGA_Move::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 	if (!BattleManagerRef || !GridInterface)
 	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // 참조 없음
-		return;
-	}
-
-	// 2. (신규) 태그를 기반으로 이 GA 인스턴스가 어떤 방향인지 결정
-	// (CharacterBase::GiveMoveAbilities에서 설정한 태그를 읽음)
-	if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(TEXT("Ability.Move.Up"))))
-	{
-		MoveDirection = EGridDirection::Up;
-	}
-	else if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(TEXT("Ability.Move.Down"))))
-	{
-		MoveDirection = EGridDirection::Down;
-	}
-	else if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(TEXT("Ability.Move.Left"))))
-	{
-		MoveDirection = EGridDirection::Left;
-	}
-	else if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(TEXT("Ability.Move.Right"))))
-	{
-		MoveDirection = EGridDirection::Right;
-	}
-	else
-	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // 방향 태그 없음
-		return;
-	}
-
-	// 3. 목표 인덱스(칸 번호) 계산
-	const int32 CurrentIndex = Character->GridIndex;
-	int32 TargetIndex = CurrentIndex;
-
-	// (신규) 그리드 크기(세로 길이)를 인터페이스에서 가져옴
-	const int32 GridHeight = IGridDataInterface::Execute_GetGridHeight(GridInterface.GetObject());
-	if (GridHeight <= 0)
-	{
-		UE_LOG(LogTemp, Error, TEXT("GA_Move: GridHeight가 0 또는 음수입니다. BP_GridISM 확인 필요."));
+		Character->EndAction(); // 안전 장치
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
-	// (신규) 세로 우선(Column-Major) 인덱스 계산
+	// 2. 방향 결정 (태그 기반)
+	if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(TEXT("Ability.Move.Up"))))
+		MoveDirection = EGridDirection::Up;
+	else if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(TEXT("Ability.Move.Down"))))
+		MoveDirection = EGridDirection::Down;
+	else if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(TEXT("Ability.Move.Left"))))
+		MoveDirection = EGridDirection::Left;
+	else if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(TEXT("Ability.Move.Right"))))
+		MoveDirection = EGridDirection::Right;
+	else
+	{
+		Character->EndAction();
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	// 3. 목표 인덱스 및 경계 검사
+	const int32 CurrentIndex = Character->GridIndex;
+	int32 TargetIndex = CurrentIndex;
+	const int32 GridHeight = IGridDataInterface::Execute_GetGridHeight(GridInterface.GetObject());
+	const int32 GridWidth = IGridDataInterface::Execute_GetGridWidth(GridInterface.GetObject());
+
+	if (GridHeight <= 0 || GridWidth <= 0)
+	{
+		Character->EndAction();
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
 	switch (MoveDirection)
 	{
-	case EGridDirection::Up:	// Y-
-		TargetIndex = CurrentIndex - 1;
-		break;
-	case EGridDirection::Down:	// Y+
-		TargetIndex = CurrentIndex + 1;
-		break;
-	case EGridDirection::Left:	// X-
-		TargetIndex = CurrentIndex - GridHeight; // 한 열(Column) 뒤로
-		break;
-	case EGridDirection::Right: // X+
-		TargetIndex = CurrentIndex + GridHeight; // 한 열(Column) 앞으로
-		break;
+	case EGridDirection::Up:	TargetIndex = CurrentIndex - 1; break;
+	case EGridDirection::Down:	TargetIndex = CurrentIndex + 1; break;
+	case EGridDirection::Left:	TargetIndex = CurrentIndex - GridHeight; break;
+	case EGridDirection::Right: TargetIndex = CurrentIndex + GridHeight; break;
 	}
 
-	// 4. (신규) 경계 검사 (C++)
-	const int32 GridWidth = IGridDataInterface::Execute_GetGridWidth(GridInterface.GetObject());
+	// 4. 경계 검사 (실패 시 턴 종료 처리 필수)
 	const int32 MaxIndex = (GridWidth * GridHeight) - 1;
+	bool bIsValidMove = true;
 
-	// 4a. 상/하 경계 (Y축, % 연산)
-	if (MoveDirection == EGridDirection::Up && (CurrentIndex % GridHeight == 0))
+	if (MoveDirection == EGridDirection::Up && (CurrentIndex % GridHeight == 0)) bIsValidMove = false;
+	if (MoveDirection == EGridDirection::Down && (CurrentIndex % GridHeight == GridHeight - 1)) bIsValidMove = false;
+	if (TargetIndex < 0 || TargetIndex > MaxIndex) bIsValidMove = false;
+
+	if (!bIsValidMove)
 	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // 맨 위 칸(Y=0)
-		return;
-	}
-	if (MoveDirection == EGridDirection::Down && (CurrentIndex % GridHeight == GridHeight - 1))
-	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // 맨 아래 칸(Y=4)
-		return;
-	}
-	// 4b. 좌/우 경계 (X축, 전체 인덱스)
-	if (TargetIndex < 0 || TargetIndex > MaxIndex)
-	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // 맵 밖 (0 미만 또는 34 초과)
+		UE_LOG(LogTemp, Warning, TEXT("GA_Move: 이동 불가 (맵 경계)"));
+
+		if (APlayerCharacter* Player = Cast<APlayerCharacter>(Character))
+		{
+			Player->bHasCommittedAction = false; // ★ 잠금 해제!
+		}
+		// 적이라면 강제 턴 종료 (게임 멈춤 방지)
+		else
+		{
+			Character->EndAction();
+		}
+
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
-	// 5. 점유/좌표 변환
-	// (신규) 인덱스로부터 좌표를 다시 계산
+	// 5. 점유 검사
 	FIntPoint TargetCoord = IGridDataInterface::Execute_GetGridCoordFromIndex(GridInterface.GetObject(), TargetIndex);
 
 	if (BattleManagerRef->GetCharacterAt(TargetCoord) != nullptr)
 	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // 점유됨
+		UE_LOG(LogTemp, Warning, TEXT("GA_Move: 이동 불가 (장애물)"));
+
+		if (APlayerCharacter* Player = Cast<APlayerCharacter>(Character))
+		{
+			Player->bHasCommittedAction = false; // ★ 잠금 해제!
+		}
+		else
+		{
+			Character->EndAction();
+		}
+
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
-	// 6. 목표 월드 위치 계산
-	FVector TargetLocation = BattleManagerRef->GetWorldLocation(TargetCoord);
-	TargetLocation.Z += Character->SpawnZOffset;
+	// 6. 이동 실행 (성공)
 
 
-	// 7. 캐릭터의 논리적 위치 업데이트 및 "이동 시작" 명령
-    Character->MoveToCell(TargetCoord, TargetIndex);
+	Character->MoveToCell(TargetCoord, TargetIndex);
 
-	// 9. 턴 종료 및 어빌리티 종료
-	Character->EndAction();
-	EndAbility(Handle, ActorInfo, ActivationInfo, true, false); // 성공
+	// GAS 어빌리티 자체는 여기서 종료해도 됨 (캐릭터의 이동 상태는 Tick에서 관리하므로)
+	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 }
-
-
-

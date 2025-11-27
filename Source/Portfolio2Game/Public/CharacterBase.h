@@ -114,10 +114,10 @@ public:
 	bool bCanAct = false;
 
 	UFUNCTION(BlueprintCallable, Category = "Turn")
-	void StartAction();
+	virtual void StartAction();
 
 	UFUNCTION(BlueprintCallable, Category = "Turn")
-	void EndAction();
+	virtual void EndAction();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ref")
 	TObjectPtr<ABattleManager> BattleManagerRef;
@@ -151,6 +151,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Move|Visual")
 	TObjectPtr<UAnimMontage> RunMontage;
 
+	// 현재 이동에 사용할 '정지' 몽타주 (이동 시작 시 EnemyCharacter가 채워줌)
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Move|Visual")
+	TObjectPtr<UAnimMontage> CurrentStopMontage;
+
 	UFUNCTION(BlueprintImplementableEvent, Category = "Move")
 	void PlayMoveAnim();
 
@@ -179,6 +183,12 @@ protected:
 
 	// 이동 시작 함수
 	void StartVisualMove(const FVector& TargetLocation);
+
+	// 정지 애니메이션 대기용 타이머
+	FTimerHandle StopAnimTimerHandle;
+
+	// 정지 애니메이션이 끝나면 호출될 함수
+	void OnStopAnimEnded();
 
 	// ───────── 상태 (수정됨) ─────────
 public:

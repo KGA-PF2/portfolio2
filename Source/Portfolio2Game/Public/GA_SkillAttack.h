@@ -26,11 +26,15 @@ protected:
 	// 실제 이펙트 및 데미지 적용 (좌표 회전 포함)
 	void ApplySkillEffects(ACharacterBase* Caster, USkillBase* SkillInfo);
 
+	// 몽타주가 끝나면 호출될 함수
+	UFUNCTION()
+	void OnMontageEnded();
+
 private:
 	// 실행 중인 스킬 정보 임시 저장
 	UPROPERTY()
 	TObjectPtr<USkillBase> CachedSkillInfo;
 
-	// [신규] 전달받은 데미지 저장용
+	// 전달받은 데미지 저장용
 	float CachedDamage = 0.0f;
 };

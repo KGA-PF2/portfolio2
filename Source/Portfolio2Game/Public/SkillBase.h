@@ -2,7 +2,9 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "GameplayTagContainer.h"
 #include "Particles/ParticleSystem.h"
+#include "NiagaraSystem.h"
 #include "SkillBase.generated.h"
 
 UCLASS(BlueprintType)
@@ -32,6 +34,11 @@ public:
     /** 타격 지점에 생성될 이펙트 (Cascade Particle System) */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill|Visual")
     TObjectPtr<UParticleSystem> TileEffect;
+
+    // Niagara 이펙트 (Priority High)
+    // 이 값이 있으면 TileEffect를 무시하고 이것만 재생합니다.
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill|Visual")
+    TObjectPtr<UNiagaraSystem> NiagaraEffect;
 
     /** 이펙트 생성 위치 미세 조정 (예: 바닥보다 살짝 위 Z=50) */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill|Visual")
