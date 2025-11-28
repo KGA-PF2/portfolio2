@@ -210,6 +210,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Rotation")
 	TObjectPtr<UAnimMontage> Montage_Rotate180; // R (뒤로)
 
+	// [신규] 회전 보간을 위한 변수들
+	bool bIsRotating = false;
+	FQuat RotationStartQuat; // 시작 회전값 (쿼터니언)
+	FQuat RotationTargetQuat; // 목표 회전값
+	float RotationTimeElapsed = 0.0f;
+	float RotationDuration = 0.0f;
+
 	/*UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid")
 	bool bFacingRight = true;*/
 

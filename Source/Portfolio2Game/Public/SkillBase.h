@@ -27,6 +27,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill")
     TObjectPtr<UTexture2D> SkillIcon;
 
+    // 스킬 카드 배경/커버 이미지
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill|Visual")
+    TObjectPtr<UTexture2D> SkillCover;
+
     /** 스킬 사용 시 재생할 몽타주 (AnimNotify로 타격 시점 조절) */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill|Visual")
     TObjectPtr<UAnimMontage> SkillMontage;

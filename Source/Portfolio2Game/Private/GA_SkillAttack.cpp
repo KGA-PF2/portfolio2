@@ -6,6 +6,7 @@
 #include "EnemyCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
+#include "GameFramework/Character.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 
@@ -70,6 +71,10 @@ void UGA_SkillAttack::ExecuteAttackSequence(ACharacterBase* Caster, USkillBase* 
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 		return;
 	}
+	if (Caster)
+	{
+		Caster->SetAnimRootMotionTranslationScale(0.0f); // 제자리 고정
+	}
 
 	// 4. 재생 (섹션 이름 없이 처음부터 재생)
 	UAbilityTask_PlayMontageAndWait* PlayMontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
@@ -106,7 +111,10 @@ void UGA_SkillAttack::OnMontageEnded()
 
 	// 어빌리티 종료
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
-
+	if (Caster)
+	{
+		Caster->SetAnimRootMotionTranslationScale(1.0f); // 이동 가능 복구
+	}
 	if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Caster))
 	{
 		Enemy->EndAction();

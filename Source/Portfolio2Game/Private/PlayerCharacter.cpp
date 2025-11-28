@@ -39,33 +39,30 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	// 1. ASC 초기화 (기존 코드)
+	// 1. ASC 초기화 (기존 유지)
 	if (AbilitySystem)
 	{
 		AbilitySystem->InitAbilityActorInfo(this, this);
 	}
 
-	// 2. ★ [신규] 데이터 로드 (GameInstance 체크)
-	// (BeginPlay 대신 여기서 처리합니다)
+	// 2. 데이터 로드 (기존 유지)
 	if (HasAuthority())
 	{
 		UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance());
-
-		// 저장된 데이터가 있다면 불러오기
 		if (GI && GI->HasSavedData())
 		{
-			// 체력 복구
 			if (Attributes)
 			{
 				Attributes->InitHealth(GI->SavedMaxHP);
 				Attributes->SetHealth_Internal(GI->SavedCurrentHP);
 			}
-			// 스킬 복구
 			OwnedSkills = GI->SavedSkills;
 
-			UE_LOG(LogTemp, Warning, TEXT("[Player] Data Loaded from GI (HP: %.0f)"), GI->SavedCurrentHP);
+			for (FPlayerSkillData& Skill : OwnedSkills)
+			{
+				Skill.CurrentCooldown = 0;
+			}
 		}
-		// 저장된 게 없다면 (첫 판) -> 기본 초기화
 		else
 		{
 			InitAttributes();
@@ -73,7 +70,7 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 		}
 	}
 
-	// 3. 입력 컨텍스트 설정 (기존 코드)
+	// 3. 입력 설정 & ★ 마우스 무조건 켜기 (통합) ★
 	APlayerController* PC = Cast<APlayerController>(NewController);
 	if (PC)
 	{
@@ -85,6 +82,10 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 			}
 		}
 	}
+
+	// 상태 초기화
+	bInputLocked = false;
+	bHasCommittedAction = false;
 }
 
 

@@ -7,6 +7,7 @@
 #include "Components/WidgetComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "PlayerCharacter.h" 
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h" 
 #include "GridISM.h"
 #include "GA_Move.h"
@@ -171,47 +172,58 @@ FRotator ACharacterBase::GetRotationFromEnum(EGridDirection Dir) const
 
 void ACharacterBase::RequestRotation(EGridDirection NewDir, UAnimMontage* MontageToPlay)
 {
-	// 1. 일단 턴 행동 시작으로 간주 (입력 잠금 등)
-	// (PlayerCharacter 등에서 이미 잠금 처리했겠지만 확실하게)
+	// 1. 상태 설정 (입력 차단 등)
 	bCanAct = false;
 	PendingRotationDirection = NewDir;
-	FacingDirection = NewDir; // 논리적 방향은 미리 업데이트 (UI 등 반영)
-
+	FacingDirection = NewDir; // 논리적 방향은 미리 업데이트
 	OnBusyStateChanged.Broadcast(true);
 
-	// 2. 애니메이션이 유효한지 체크
+	// 2. 회전 목표값 계산 (쿼터니언 사용 -> 짐벌락 방지 및 최단거리 회전)
+	RotationStartQuat = GetActorQuat(); // 현재 회전값
+	RotationTargetQuat = GetRotationFromEnum(NewDir).Quaternion(); // 목표 회전값
+
+	// ★ [핵심 수정 1] 방해꾼들 제거 (이게 켜져 있으면 우리 회전을 덮어씁니다)
+	// (1) 컨트롤러가 몸통 회전시키는 것 끄기
+	bUseControllerRotationYaw = false;
+
+	// (2) 이동 방향으로 몸통 돌리는 것 끄기
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->bOrientRotationToMovement = false;
+	}
+
+	// 3. 애니메이션 재생 및 회전 시작
 	if (MontageToPlay && GetMesh()->GetAnimInstance())
 	{
-		// A. 애니메이션 재생
-		float Duration = PlayAnimMontage(MontageToPlay);
+		float Duration = PlayAnimMontage(MontageToPlay, 2.0f);
 
 		if (Duration > 0.f)
 		{
-			// B. 종료 델리게이트 연결 (애니메이션 끝나면 FinalizeRotation 실행)
+			// 회전 보간 시작 설정
+			bIsRotating = true;
+			RotationDuration = Duration * 0.33f;
+			RotationTimeElapsed = 0.0f;
+
+			// 종료 델리게이트 연결 (애니메이션 끝나면 Finalize 실행)
 			FOnMontageEnded EndDelegate;
 			EndDelegate.BindUObject(this, &ACharacterBase::FinalizeRotation);
 			GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
-
-			// 로그
-			// UE_LOG(LogTemp, Log, TEXT("Rotation Anim Started: %s"), *MontageToPlay->GetName());
-			return; // 여기서 리턴하면 FinalizeRotation이 나중에 호출됨
+			return;
 		}
 	}
 
-	// 3. 애니메이션이 없거나 재생 실패 시 -> 즉시 회전
+	// 애니메이션 없으면 즉시 회전
 	FinalizeRotation(nullptr, false);
 }
 
 void ACharacterBase::FinalizeRotation(UAnimMontage* Montage, bool bInterrupted)
 {
-	// 1. 메쉬를 실제 방향으로 회전시킴 (Snap)
+	// 혹시 Tick에서 다 못 돌렸을 경우를 대비해 강제 고정
+	bIsRotating = false;
 	SetActorRotation(GetRotationFromEnum(PendingRotationDirection));
 
-	// 2. 턴 종료 처리
-	// (EndAction 내부에서 BattleManager에게 턴 넘김을 알림)
+	// 턴 종료
 	EndAction();
-
-	// UE_LOG(LogTemp, Log, TEXT("Rotation Finalized."));
 }
 
 void ACharacterBase::RotateToDirection(EGridDirection NewDir, bool bConsumeTurn)
@@ -415,6 +427,24 @@ void ACharacterBase::Tick(float DeltaTime)
 					CachedGridIndex = GridIndex;
 				}
 			}
+		}
+	}
+
+	if (bIsRotating)
+	{
+		RotationTimeElapsed += DeltaTime;
+
+		// 진행률 (0.0 ~ 1.0)
+		float Alpha = FMath::Clamp(RotationTimeElapsed / RotationDuration, 0.0f, 1.0f);
+
+		// 쿼터니언 구면 보간 (Slerp) -> 최단거리로 부드럽게 회전
+		FQuat NewQuat = FQuat::Slerp(RotationStartQuat, RotationTargetQuat, Alpha);
+		SetActorRotation(NewQuat);
+
+		// 시간이 다 되면 회전 플래그 끔 (마무리는 FinalizeRotation에서 확실하게 함)
+		if (Alpha >= 1.0f)
+		{
+			bIsRotating = false;
 		}
 	}
 }

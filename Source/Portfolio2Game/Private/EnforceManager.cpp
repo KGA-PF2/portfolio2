@@ -40,23 +40,65 @@ void AEnforceManager::BeginPlay()
 		UE_LOG(LogTemp, Error, TEXT("EnforceManager: HUD Class is None!"));
 	}
 
-	// 3. 마우스 커서 활성화 (드래그 앤 드롭 필수)
+	// 3. 레벨 전환 연출 처리
+	UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance());
+	if (GI && GI->bIsLevelTransitioning)
+	{
+		GI->bIsLevelTransitioning = false; // 플래그 해제
+
+		if (TransitionWidgetClass)
+		{
+			// 화면을 덮은 상태로 위젯 생성
+			CurrentTransitionWidget = CreateWidget<UUserWidget>(GetWorld(), TransitionWidgetClass);
+			if (CurrentTransitionWidget)
+			{
+				CurrentTransitionWidget->AddToViewport(9999); // 최상단
+
+				// 0.2초 뒤에 걷히기 시작 (로딩 튀는 것 방지)
+				FTimerHandle Handle;
+				GetWorld()->GetTimerManager().SetTimer(Handle, this, &AEnforceManager::ExecuteUncover, 0.2f, false);
+			}
+		}
+	}
+
+	// 4. 마우스 커서 활성화 (드래그 앤 드롭 필수)
 	if (PC)
 	{
+		// 마우스 커서 보이기
 		PC->bShowMouseCursor = true;
 
+		// UI와 게임 모두 입력 가능하도록 설정
 		FInputModeGameAndUI InputMode;
 
+		// HUD에 포커스를 줘서 바로 키보드/마우스 반응하게 함
 		if (HUDRef)
 		{
 			InputMode.SetWidgetToFocus(HUDRef->TakeWidget());
 		}
 
+		// 마우스가 뷰포트 밖으로 나가지 않게 (선택 사항)
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+		// 클릭 시 커서가 사라지는 현상 방지
+		InputMode.SetHideCursorDuringCapture(false);
+
 		PC->SetInputMode(InputMode);
+
+		UE_LOG(LogTemp, Warning, TEXT("[EnforceManager] Input Mode Set: ShowMouse=True, GameAndUI"));
 	}
 }
 
+
+void AEnforceManager::ExecuteUncover()
+{
+	if (CurrentTransitionWidget)
+	{
+		FOutputDeviceNull Ar;
+		CurrentTransitionWidget->CallFunctionByNameWithArguments(TEXT("PlayUncover"), Ar, nullptr, true);
+
+		CurrentTransitionWidget = nullptr;
+	}
+}
 
 void AEnforceManager::SpawnPlayerAndInit()
 {
@@ -201,8 +243,6 @@ void AEnforceManager::AcquireNewSkill(USkillBase* NewSkill)
 	Player->OnNewSkillAcquired.Broadcast(NewIndex);
 	FTimerHandle WaitHandle;
 	GetWorld()->GetTimerManager().SetTimer(WaitHandle, this, &AEnforceManager::CompleteStage, 1.5f, false);
-
-	CompleteStage();
 }
 
 void AEnforceManager::CompleteStage()
