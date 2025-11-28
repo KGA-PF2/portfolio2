@@ -33,6 +33,7 @@ void AEnforceManager::BeginPlay()
 		if (HUDRef)
 		{
 			HUDRef->AddToViewport();
+			UE_LOG(LogTemp, Error, TEXT("EnforceManager: Enforce UI MADE!"));
 		}
 	}
 	else
@@ -60,8 +61,42 @@ void AEnforceManager::BeginPlay()
 			}
 		}
 	}
+
+	//delayedInputSetup실행
+	FTimerHandle InputSetupHandle;
+	GetWorld()->GetTimerManager().SetTimer(InputSetupHandle, this, &AEnforceManager::DelayedInputSetup, 0.1f, false);
+
 }
 
+
+void AEnforceManager::DelayedInputSetup()
+{
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (PC)
+	{
+		// 1. 마우스 커서 강제 활성화
+		PC->bShowMouseCursor = true;
+
+		// 2. 입력 모드 설정
+		FInputModeGameAndUI InputMode;
+
+		// HUD에 포커스 (드래그 앤 드롭을 위해 필수)
+		if (HUDRef)
+		{
+			InputMode.SetWidgetToFocus(HUDRef->TakeWidget());
+		}
+
+		// 마우스 가두지 않음
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+		// ★ [중요] 클릭 시 커서 사라짐 방지
+		InputMode.SetHideCursorDuringCapture(false);
+
+		PC->SetInputMode(InputMode);
+
+		UE_LOG(LogTemp, Warning, TEXT("EnforceManager: Input Mode Force Applied (Delayed)"));
+	}
+}
 
 void AEnforceManager::ExecuteUncover()
 {
@@ -209,8 +244,6 @@ void AEnforceManager::AcquireNewSkill(USkillBase* NewSkill)
 	NewData.InitializeFromBase();
 
 	int32 NewIndex = Player->OwnedSkills.Add(NewData);
-
-	Player->OwnedSkills.Add(NewData);
 
 	UE_LOG(LogTemp, Warning, TEXT("New Skill Acquired!"));
 

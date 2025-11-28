@@ -101,4 +101,7 @@ private:
 	void CompleteStage(); // 저장 및 이동 시작
 	void MoveToNextLevel(); // 실제 이동
 	void ExecuteUncover(); // 화면 덮기 연출
+	
+	UFUNCTION()
+	void DelayedInputSetup();
 };

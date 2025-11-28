@@ -30,7 +30,7 @@ void ACharacterBase::BeginPlay()
 
 	if (!BattleManagerRef)
 	{
-		UE_LOG(LogTemp, Error, TEXT("%s: 맵에서 BattleManager를 찾을 수 없습니다!"), *GetName());
+		//UE_LOG(LogTemp, Error, TEXT("%s: 맵에서 BattleManager를 찾을 수 없습니다!"), *GetName());
 	}
 
 	if (AbilitySystem)
@@ -74,7 +74,7 @@ void ACharacterBase::BeginPlay()
 	}
 
 	// 게임 시작 시 기본 방향(Right)으로 정렬
-	RotateToDirection(EGridDirection::Right, false);
+	//RotateToDirection(EGridDirection::Right, false);
 }
 
 
