@@ -60,32 +60,6 @@ void AEnforceManager::BeginPlay()
 			}
 		}
 	}
-
-	// 4. 마우스 커서 활성화 (드래그 앤 드롭 필수)
-	if (PC)
-	{
-		// 마우스 커서 보이기
-		PC->bShowMouseCursor = true;
-
-		// UI와 게임 모두 입력 가능하도록 설정
-		FInputModeGameAndUI InputMode;
-
-		// HUD에 포커스를 줘서 바로 키보드/마우스 반응하게 함
-		if (HUDRef)
-		{
-			InputMode.SetWidgetToFocus(HUDRef->TakeWidget());
-		}
-
-		// 마우스가 뷰포트 밖으로 나가지 않게 (선택 사항)
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-
-		// 클릭 시 커서가 사라지는 현상 방지
-		InputMode.SetHideCursorDuringCapture(false);
-
-		PC->SetInputMode(InputMode);
-
-		UE_LOG(LogTemp, Warning, TEXT("[EnforceManager] Input Mode Set: ShowMouse=True, GameAndUI"));
-	}
 }
 
 

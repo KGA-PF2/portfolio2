@@ -44,17 +44,17 @@ void ABattleManager::BeginPlay()
 		}
 	}
 
-	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
-	if (PC)
-	{
-		PC->bShowMouseCursor = true; // 마우스 보이기
+	//APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	//if (PC)
+	//{
+	//	PC->bShowMouseCursor = true; // 마우스 보이기
 
-		FInputModeGameAndUI InputMode;
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		InputMode.SetHideCursorDuringCapture(false); // 클릭해도 사라지지 않음
+	//	FInputModeGameAndUI InputMode;
+	//	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	//	InputMode.SetHideCursorDuringCapture(false); // 클릭해도 사라지지 않음
 
-		PC->SetInputMode(InputMode);
-	}
+	//	PC->SetInputMode(InputMode);
+	//}
 
 	// 1. (신규) GridActorRef 유효성 검사 및 인터페이스 캐시
 	if (!GridActorRef)

@@ -83,6 +83,14 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 		}
 	}
 
+	PC->bShowMouseCursor = true;
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetHideCursorDuringCapture(false); // 클릭 시 사라짐 방지
+
+	PC->SetInputMode(InputMode);
+
 	// 상태 초기화
 	bInputLocked = false;
 	bHasCommittedAction = false;
