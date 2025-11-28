@@ -24,6 +24,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSkillQueueCleared_BP);
 /** 플레이어 턴 시작 시 UI 갱신을 위한 델리게이트 */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTurnStart_BP);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSkillDataUpdated, int32, SkillIndex);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewSkillAcquired, int32, NewSkillIndex);
+
 /** GAS 입력 바인딩용 Enum */
 namespace PlayerAbilityInputID
 {
@@ -65,6 +69,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "UI|Event")
 	FOnTurnStart_BP OnTurnStart_BPEvent;
 
+	// ★ [신규] 스킬 데이터(강화 등)가 변경되면 호출되는 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnSkillDataUpdated OnSkillDataUpdated;
+
+	// ★ [신규] 신규 스킬 획득 알림 (추가용)
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnNewSkillAcquired OnNewSkillAcquired;
+
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnCooldownFinished OnCooldownFinished_BPEvent;
 
@@ -75,11 +87,17 @@ public:
 	// 이번 턴에 이미 행동(이동/스킬)을 했는지 체크
 	bool bHasCommittedAction = false;
 
+	// 플레이어가 가진 전체 스킬
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill")
+	TArray<FPlayerSkillData> OwnedSkills;
+
 private:
 	bool bInputLocked = false;  // 입력 잠금 여부
 	FTimerHandle InputLockTimerHandle;
 
 	void SetInputEnabled(bool bEnabled);
+
+	
 
 protected:
 	// ❌ (제거) BeginPlay() (부모 클래스(CharacterBase)가 BattleManager를 찾음)
@@ -131,6 +149,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
 	TObjectPtr<UInputAction> IA_CancelSkills;
 
+	// 디버그용 (F12)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_DebugClear;
 
 
 	// ───────────── 스킬 관련 ─────────────
@@ -145,9 +166,9 @@ protected:
 	void Input_RotateCW();
 	void Input_Rotate180();
 
-	// 플레이어가 가진 전체 스킬
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill")
-	TArray<FPlayerSkillData> OwnedSkills;
+	void Input_DebugStageClear();
+
+	
 
 	// 현재 턴에 사용할 스킬 대기열
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Skill")

@@ -57,6 +57,35 @@ public:
 
 	int32 TurnsSinceSingleEnemy = 0;
 
+	UUserWidget* CurrentTransitionWidget; // 임시 저장용
+
+	// 이 맵에서 잡아야 할 총 적의 수 (기본 4)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle|Rules")
+	int32 MaxKillCount = 4;
+
+	// 클리어 후 이동할 다음 레벨 이름 (예: Stage_Enforce)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle|Rules")
+	FName NextLevelName;
+
+	// 이동 직전에 보여줄 연출 위젯 (검은 화면 페이드 등)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle|UI")
+	TSubclassOf<UUserWidget> TransitionWidgetClass;
+
+	// 현재까지 잡은 적 수
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Battle|State")
+	int32 CurrentKillCount = 0;
+
+	// 현재까지 스폰된 적 총합 (4마리 넘으면 스폰 중단용)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Battle|State")
+	int32 TotalSpawnedCount = 0;
+
+	// 적이 죽었을 때 호출 (Kill Count 증가)
+	void OnEnemyKilled(AEnemyCharacter* DeadEnemy);
+
+	// 강제 스테이지 클리어 (F12 디버그용 & 승리 시 호출)
+	UFUNCTION(BlueprintCallable)
+	void ForceStageClear();
+
 	// ──────────────────────────────
 	// 액터 참조 (수정됨)
 	// ──────────────────────────────
@@ -112,6 +141,9 @@ protected:
 	// 다음 순번 적에게 행동 명령 내리기
 	void ProcessNextEnemyAction();
 
+	void MoveToNextLevel();
+
+	void ExecuteUncover();
 	// ──────────────────────────────
 	// 스폰 관련 (수정됨)
 	// ──────────────────────────────

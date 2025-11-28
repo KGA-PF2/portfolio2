@@ -4,7 +4,10 @@
 #include "CharacterBase.h"      
 #include "GridDataInterface.h" 
 #include "TimerManager.h"
+#include "PortfolioGameInstance.h"
+#include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
+#include <Misc/OutputDeviceNull.h>
 
 ABattleManager::ABattleManager()
 {
@@ -18,6 +21,28 @@ ABattleManager::ABattleManager()
 void ABattleManager::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// ───────── [신규] 레벨 진입 시 연출 확인 ─────────
+	UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance());
+	if (GI && GI->bIsLevelTransitioning)
+	{
+		// 1. 이동 중이었다면 플래그 해제
+		GI->bIsLevelTransitioning = false;
+
+		// 2. 모래바람 위젯 생성
+		if (TransitionWidgetClass)
+		{
+			CurrentTransitionWidget = CreateWidget<UUserWidget>(GetWorld(), TransitionWidgetClass);
+			if (CurrentTransitionWidget)
+			{
+				CurrentTransitionWidget->AddToViewport(9999);
+
+				// 1초 뒤 실행
+				FTimerHandle Handle;
+				GetWorld()->GetTimerManager().SetTimer(Handle, this, &ABattleManager::ExecuteUncover, 0.2f, false);
+			}
+		}
+	}
 
 	// 1. (신규) GridActorRef 유효성 검사 및 인터페이스 캐시
 	if (!GridActorRef)
@@ -37,6 +62,18 @@ void ABattleManager::BeginPlay()
 
 }
 
+void ABattleManager::ExecuteUncover()
+{
+	if (CurrentTransitionWidget)
+	{
+		FOutputDeviceNull Ar;
+		CurrentTransitionWidget->CallFunctionByNameWithArguments(TEXT("PlayUncover"), Ar, nullptr, true);
+
+		// 사용 후 포인터 초기화 (선택)
+		CurrentTransitionWidget = nullptr;
+	}
+}
+
 // ──────────────────────────────
 // 전투 시작
 // ──────────────────────────────
@@ -50,6 +87,10 @@ void ABattleManager::BeginBattle()
 
 	CurrentRound = 0;
 	TurnCount = 0;
+
+	CurrentKillCount = 0;
+	TotalSpawnedCount = 0;
+
 	TurnsSinceSingleEnemy = 0;
 
 	SpawnPlayer(); // (수정됨) PlayerStart 스폰 문제를 해결하기 위해 먼저 스폰
@@ -301,21 +342,24 @@ void ABattleManager::SpawnEnemiesForRound_Implementation()
 {
 	if (!EnemyClass || !GridInterface) return;
 
+	// ★ 목표 수(4마리)를 다 스폰했으면 더 이상 스폰 안 함
+	if (TotalSpawnedCount >= MaxKillCount) return;
+
+	// 남은 TO 계산 (최대 2마리씩)
+	int32 Remaining = MaxKillCount - TotalSpawnedCount;
+	int32 SpawnLimit = FMath::Min(2, Remaining);
+
+	// (기존 위치 선정 로직)
 	TArray<int32> AvailableSpawnIndices = EnemySpawnIndices;
-	
-	// 이미 있는 적들의 위치를 후보에서 제거
 	for (AEnemyCharacter* ExistingEnemy : Enemies)
 	{
 		if (ExistingEnemy && !ExistingEnemy->bDead)
-		{
 			AvailableSpawnIndices.Remove(ExistingEnemy->GridIndex);
-		}
 	}
 
-	int32 NumEnemiesToSpawn = 2;
-	int32 MaxSpawns = FMath::Min(NumEnemiesToSpawn, AvailableSpawnIndices.Num());
+	int32 ActualCount = FMath::Min(SpawnLimit, AvailableSpawnIndices.Num());
 
-	for (int32 i = 0; i < MaxSpawns; ++i)
+	for (int32 i = 0; i < ActualCount; ++i)
 	{
 		int32 RandomArrayIndex = FMath::RandRange(0, AvailableSpawnIndices.Num() - 1);
 		int32 SpawnIndex = AvailableSpawnIndices[RandomArrayIndex];
@@ -352,6 +396,81 @@ void ABattleManager::SpawnEnemiesForRound_Implementation()
 	Enemies.RemoveAll([](AEnemyCharacter* E) { return E == nullptr || E->bDead; });
 }
 
+void ABattleManager::OnEnemyKilled(AEnemyCharacter* DeadEnemy)
+{
+	CurrentKillCount++;
+	UE_LOG(LogTemp, Warning, TEXT("Kill Count: %d / %d"), CurrentKillCount, MaxKillCount);
+
+	// 목표 달성 시 클리어 처리
+	if (CurrentKillCount >= MaxKillCount)
+	{
+		ForceStageClear();
+	}
+}
+
+void ABattleManager::ForceStageClear()
+{
+	if (CurrentState == EBattleState::Victory) return; // 중복 호출 방지
+	EndBattle(true); // 승리 상태로 변경
+
+	// A. 데이터 저장 (GameInstance에 맡기기)
+	if (PlayerRef && PlayerRef->Attributes)
+	{
+		UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance());
+		if (GI)
+		{
+			float HP = PlayerRef->Attributes->GetHealth_BP();
+			float MaxHP = PlayerRef->Attributes->GetMaxHealth_BP();
+			// 아까 PlayerCharacter.h에서 OwnedSkills를 public으로 옮겼으니 접근 가능
+			GI->SavePlayerData(HP, MaxHP, PlayerRef->OwnedSkills);
+
+			GI->bIsLevelTransitioning = true;
+		}
+	}
+
+	// B. 화면 연출 (검은 화면)
+	if (TransitionWidgetClass)
+	{
+		UUserWidget* Widget = CreateWidget<UUserWidget>(GetWorld(), TransitionWidgetClass);
+		if (Widget)
+		{
+			Widget->AddToViewport(9999);
+
+			// ★ "덮는(Cover)" 애니메이션 실행
+			FOutputDeviceNull Ar;
+			Widget->CallFunctionByNameWithArguments(TEXT("PlayCover"), Ar, nullptr, true);
+		}
+	}
+
+	// C. 1초 뒤 레벨 이동
+	FTimerHandle Handle;
+	GetWorld()->GetTimerManager().SetTimer(Handle, this, &ABattleManager::MoveToNextLevel, 2.6f, false);
+}
+
+void ABattleManager::MoveToNextLevel()
+{
+	// 1. 게임 인스턴스 가져오기
+	UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance());
+
+	if (GI)
+	{
+		// ★ GI에게 다음 맵 이름 요청 (이때 GI 내부에서 인덱스와 난이도가 업데이트됨)
+		FName NextMap = GI->GetNextStageName();
+
+		if (NextMap != NAME_None)
+		{
+			UGameplayStatics::OpenLevel(this, NextMap);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("Next Stage Name is None!"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("GameInstance Cast Failed!"));
+	}
+}
 
 FVector ABattleManager::GridToWorld(FIntPoint GridPos) const
 {

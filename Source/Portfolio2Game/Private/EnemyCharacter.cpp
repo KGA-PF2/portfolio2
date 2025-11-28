@@ -650,6 +650,11 @@ void AEnemyCharacter::Die()
 		);
 	}
 
+	if (BattleManagerRef)
+	{
+		BattleManagerRef->OnEnemyKilled(this);
+	}
+
 	// 3. 사망 애니메이션 (T키 대체)
 	float Duration = 0.f;
 	if (DeathMontage)
@@ -661,11 +666,32 @@ void AEnemyCharacter::Die()
 	float DestroyDelay = (Duration > 0.f) ? Duration : 0.1f;
 
 	FTimerHandle DeathTimer;
-	GetWorld()->GetTimerManager().SetTimer(DeathTimer, [this]()
-		{
-			this->SetActorHiddenInGame(true);
-			this->Destroy();
-		}, DestroyDelay, false);
+	GetWorld()->GetTimerManager().SetTimer(
+        DeathTimer, 
+        this, 
+        &AEnemyCharacter::FinishDying, // 호출할 함수
+        DestroyDelay, 
+        false
+    );
+}
+
+// 타이머가 끝나면 호출됨
+void AEnemyCharacter::FinishDying()
+{
+	// 혹시라도 이미 파괴된 상태면 무시
+	if (!IsValid(this)) return;
+
+	SetActorHiddenInGame(true);
+	Destroy();
+}
+
+// 맵이 바뀌거나 파괴될 때 호출됨
+void AEnemyCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+
+	// 이 액터에 걸린 모든 타이머 강제 종료 (FinishDying이 호출되지 않게 막음)
+	GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
 }
 
 void AEnemyCharacter::SetActionOrder(int32 OrderIndex, UTexture2D* SubActionIcon, bool bIsDangerous)
