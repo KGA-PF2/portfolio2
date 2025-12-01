@@ -172,57 +172,68 @@ FRotator ACharacterBase::GetRotationFromEnum(EGridDirection Dir) const
 
 void ACharacterBase::RequestRotation(EGridDirection NewDir, UAnimMontage* MontageToPlay)
 {
-	// 1. 상태 설정 (입력 차단 등)
 	bCanAct = false;
 	PendingRotationDirection = NewDir;
-	FacingDirection = NewDir; // 논리적 방향은 미리 업데이트
+	FacingDirection = NewDir;
 	OnBusyStateChanged.Broadcast(true);
 
-	// 2. 회전 목표값 계산 (쿼터니언 사용 -> 짐벌락 방지 및 최단거리 회전)
-	RotationStartQuat = GetActorQuat(); // 현재 회전값
-	RotationTargetQuat = GetRotationFromEnum(NewDir).Quaternion(); // 목표 회전값
+	// 목표 각도 계산해두기
+	RotationStartQuat = GetActorQuat();
+	RotationTargetQuat = GetRotationFromEnum(NewDir).Quaternion();
 
-	// ★ [핵심 수정 1] 방해꾼들 제거 (이게 켜져 있으면 우리 회전을 덮어씁니다)
-	// (1) 컨트롤러가 몸통 회전시키는 것 끄기
+	// 방해꾼 끄기
 	bUseControllerRotationYaw = false;
+	if (GetCharacterMovement()) GetCharacterMovement()->bOrientRotationToMovement = false;
+	if (GetMesh()->GetAnimInstance()) GetMesh()->GetAnimInstance()->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
 
-	// (2) 이동 방향으로 몸통 돌리는 것 끄기
-	if (GetCharacterMovement())
+	// 애니메이션 재생
+	if (MontageToPlay)
 	{
-		GetCharacterMovement()->bOrientRotationToMovement = false;
-	}
+		PlayAnimMontage(MontageToPlay, 2.0f);
 
-	// 3. 애니메이션 재생 및 회전 시작
-	if (MontageToPlay && GetMesh()->GetAnimInstance())
+		// 종료 델리게이트 (안전장치)
+		FOnMontageEnded EndDelegate;
+		EndDelegate.BindUObject(this, &ACharacterBase::FinalizeRotation);
+		GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
+	}
+	else
 	{
-		float Duration = PlayAnimMontage(MontageToPlay, 2.0f);
-
-		if (Duration > 0.f)
-		{
-			// 회전 보간 시작 설정
-			bIsRotating = true;
-			RotationDuration = Duration * 0.33f;
-			RotationTimeElapsed = 0.0f;
-
-			// 종료 델리게이트 연결 (애니메이션 끝나면 Finalize 실행)
-			FOnMontageEnded EndDelegate;
-			EndDelegate.BindUObject(this, &ACharacterBase::FinalizeRotation);
-			GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
-			return;
-		}
+		FinalizeRotation(nullptr, false);
 	}
+}
 
-	// 애니메이션 없으면 즉시 회전
-	FinalizeRotation(nullptr, false);
+void ACharacterBase::OnAnimNotify_TurnStart()
+{
+	if (bIsRotating)
+	{
+		bCanRotate = true;
+		CurrentRotationTime = 0.0f;
+		// ★ 회전 구간 길이 설정 (예: 0.3초 동안 휙 돈다)
+		// 몽타주에서 노티파이 간격을 잴 수 없으므로 하드코딩하거나 파라미터로 받아야 함.
+		// 여기서는 0.3초(빠름)로 설정합니다.
+		ActualRotationDuration = 0.3f;
+	}
+}
+
+void ACharacterBase::OnAnimNotify_TurnEnd()
+{
+	// 회전 강제 완료
+	if (bIsRotating)
+	{
+		bCanRotate = false;
+		// 혹시 덜 돌았으면 최종 각도로 고정
+		SetActorRotation(RotationTargetQuat);
+	}
 }
 
 void ACharacterBase::FinalizeRotation(UAnimMontage* Montage, bool bInterrupted)
 {
-	// 혹시 Tick에서 다 못 돌렸을 경우를 대비해 강제 고정
-	bIsRotating = false;
+	bIsRotationWindowActive = false;
 	SetActorRotation(GetRotationFromEnum(PendingRotationDirection));
-
-	// 턴 종료
+	if (GetMesh() && GetMesh()->GetAnimInstance())
+	{
+		GetMesh()->GetAnimInstance()->SetRootMotionMode(ERootMotionMode::RootMotionFromMontagesOnly);
+	}
 	EndAction();
 }
 
@@ -430,23 +441,6 @@ void ACharacterBase::Tick(float DeltaTime)
 		}
 	}
 
-	if (bIsRotating)
-	{
-		RotationTimeElapsed += DeltaTime;
-
-		// 진행률 (0.0 ~ 1.0)
-		float Alpha = FMath::Clamp(RotationTimeElapsed / RotationDuration, 0.0f, 1.0f);
-
-		// 쿼터니언 구면 보간 (Slerp) -> 최단거리로 부드럽게 회전
-		FQuat NewQuat = FQuat::Slerp(RotationStartQuat, RotationTargetQuat, Alpha);
-		SetActorRotation(NewQuat);
-
-		// 시간이 다 되면 회전 플래그 끔 (마무리는 FinalizeRotation에서 확실하게 함)
-		if (Alpha >= 1.0f)
-		{
-			bIsRotating = false;
-		}
-	}
 }
 
 void ACharacterBase::OnStopAnimEnded()
@@ -454,6 +448,51 @@ void ACharacterBase::OnStopAnimEnded()
 	// 변수 초기화 (다음 턴을 위해)
 	CurrentStopMontage = nullptr;
 	EndAction();
+}
+
+void ACharacterBase::BeginRotationWindow(float Duration)
+{
+	bIsRotationWindowActive = true;
+
+	// PlayRate가 2.0이면 실제 시간은 절반임.
+	// NotifyState의 Duration은 '에셋 기준 시간'이므로 PlayRate로 나눠줘야 실제 시간이 됨.
+	float CurrentPlayRate = 1.0f;
+	if (GetMesh()->GetAnimInstance() && GetMesh()->GetAnimInstance()->GetCurrentActiveMontage())
+	{
+		CurrentPlayRate = GetMesh()->GetAnimInstance()->GetCurveValue(TEXT("PlayRate")); // 만약 커브로 제어 안하면 아래 사용
+		// 혹은 간단히:
+		CurrentPlayRate = 2.0f; // 아까 2.0으로 틀었으니까 (하드코딩 싫으면 변수로 저장해두세요)
+	}
+
+	RotationWindowDuration = Duration / CurrentPlayRate;
+	RotationWindowElapsed = 0.0f;
+}
+
+// 3. [신규] 노티파이가 호출: 매 프레임 회전
+void ACharacterBase::TickRotationWindow(float DeltaTime)
+{
+	if (!bIsRotationWindowActive) return;
+
+	RotationWindowElapsed += DeltaTime;
+
+	// 진행률 (0 ~ 1)
+	float Alpha = 0.0f;
+	if (RotationWindowDuration > KINDA_SMALL_NUMBER)
+	{
+		Alpha = FMath::Clamp(RotationWindowElapsed / RotationWindowDuration, 0.0f, 1.0f);
+	}
+
+	// Slerp로 부드럽게 돌리기
+	FQuat NewQuat = FQuat::Slerp(RotationStartQuat, RotationTargetQuat, Alpha);
+	SetActorRotation(NewQuat);
+}
+
+// 4. [신규] 노티파이가 호출: 회전 끝
+void ACharacterBase::EndRotationWindow()
+{
+	bIsRotationWindowActive = false;
+	// 목표 각도로 확실하게 고정
+	SetActorRotation(RotationTargetQuat);
 }
 
 // 이동 시작 (내부 함수)
