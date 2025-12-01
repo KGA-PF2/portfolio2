@@ -72,6 +72,11 @@ void ABattleManager::BeginPlay()
 		return;
 	}
 
+	if (TopBarWidgetClass)
+	{
+		UUserWidget* TopBar = CreateWidget<UUserWidget>(GetWorld(), TopBarWidgetClass);
+		if (TopBar) TopBar->AddToViewport(9000);
+	}
 }
 
 void ABattleManager::ExecuteUncover()
@@ -175,27 +180,32 @@ void ABattleManager::StartPlayerTurn()
 		if (Enemy) Enemy->HideActionOrder();
 	}
 
+	int32 AliveEnemyCount = 0;
+
 	// 모든 적 순서 지정 + 다음 행동 결정
 	for (int32 i = 0; i < Enemies.Num(); ++i)
 	{
 		AEnemyCharacter* Enemy = Enemies[i];
+
+		// 살아있는 적만 체크
 		if (Enemy && !Enemy->bDead)
 		{
+			// 번호 증가 (1부터 시작)
+			AliveEnemyCount++;
+
 			// AI 생각 (행동 결정)
 			Enemy->DecideNextAction();
 
-			// 서브 아이콘(이동/대기 등) 가져오기
 			UTexture2D* SubIcon = nullptr;
 			if (OrderManagerRef)
 			{
 				SubIcon = OrderManagerRef->GetIconForAction(Enemy);
 			}
 
-			// 장전된 스킬이 있으면 무조건 빨강
 			bool bIsDangerous = (Enemy->ReservedSkill != nullptr) ||
 				(Enemy->PendingAction == EAIActionType::FireReserved);
 
-			Enemy->SetActionOrder(i + 1, SubIcon, bIsDangerous);
+			Enemy->SetActionOrder(AliveEnemyCount, SubIcon, bIsDangerous);
 		}
 	}
 

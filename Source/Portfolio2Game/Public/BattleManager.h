@@ -191,9 +191,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Grid")
 	ACharacterBase* GetCharacterAt(FIntPoint Coord) const;
 
-	// ──────────────────────────────
-	// 전투 종료 조건
-	// ──────────────────────────────
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> TopBarWidgetClass;
+
 protected:
 	void CheckSingleEnemyTimer();
 	void CheckBattleResult();

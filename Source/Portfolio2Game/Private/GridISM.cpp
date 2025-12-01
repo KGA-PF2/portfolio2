@@ -60,7 +60,7 @@ void AGridISM::BeginPlay()
 				UWidgetComponent* WidgetComp = NewBar->FindComponentByClass<UWidgetComponent>();
 				if (WidgetComp)
 				{
-					WidgetComp->SetDrawSize(FVector2D(GridSizeX * 0.95f, 30.0f));
+					WidgetComp->SetDrawSize(FVector2D(GridSizeX * HPBarWidthRatio, HPBarHeight));
 				}
 
 				// 일단 숨김

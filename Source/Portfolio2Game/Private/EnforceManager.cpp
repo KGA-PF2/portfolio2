@@ -62,6 +62,12 @@ void AEnforceManager::BeginPlay()
 		}
 	}
 
+	if (TopBarWidgetClass)
+	{
+		UUserWidget* TopBar = CreateWidget<UUserWidget>(GetWorld(), TopBarWidgetClass);
+		if (TopBar) TopBar->AddToViewport(9000);
+	}
+
 	//delayedInputSetup실행
 	FTimerHandle InputSetupHandle;
 	GetWorld()->GetTimerManager().SetTimer(InputSetupHandle, this, &AEnforceManager::DelayedInputSetup, 0.1f, false);

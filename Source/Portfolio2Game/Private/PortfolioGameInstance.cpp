@@ -1,5 +1,30 @@
 ﻿#include "PortfolioGameInstance.h"
 
+void UPortfolioGameInstance::Init()
+{
+	Super::Init();
+
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([this](float Delta)
+		{
+			TotalPlayTime += Delta;
+			return true;
+		}));
+}
+
+void UPortfolioGameInstance::UpdatePlayTime()
+{
+}
+
+FString UPortfolioGameInstance::GetCurrentStageDisplayName()
+{
+	// 현재 인덱스를 기반으로 이름 반환
+	if (StageList.IsValidIndex(CurrentStageIndex))
+	{
+		return StageList[CurrentStageIndex].ToString();
+	}
+	return TEXT("Unknown Area");
+}
+
 void UPortfolioGameInstance::SavePlayerData(float CurrentHP, float MaxHP, const TArray<FPlayerSkillData>& Skills)
 {
 	SavedCurrentHP = CurrentHP;

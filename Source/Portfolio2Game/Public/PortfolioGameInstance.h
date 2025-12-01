@@ -53,4 +53,19 @@ public:
 	// 다음 스테이지 이름 반환 및 인덱스 증가
 	UFUNCTION(BlueprintCallable, Category = "GameFlow")
 	FName GetNextStageName();
+
+	// ───────── 플레이 정보 ─────────
+
+	UPROPERTY(BlueprintReadOnly, Category = "GameFlow")
+	float TotalPlayTime = 0.0f;
+
+	// [신규] 초기화 (타이머 시작)
+	virtual void Init() override;
+
+	// [신규] 매 초마다 시간 증가
+	void UpdatePlayTime();
+
+	// [신규] 현재 맵 이름 반환 (UI용)
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	FString GetCurrentStageDisplayName();
 };

@@ -6,6 +6,7 @@
 #include "SkillBase.h"
 #include "EnforceManager.generated.h"
 
+
 // 보상 종류 구분
 UENUM(BlueprintType)
 enum class ERewardType : uint8
@@ -95,6 +96,9 @@ public:
 	// [신규] 연출 위젯 임시 저장
 	UPROPERTY()
 	UUserWidget* CurrentTransitionWidget;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> TopBarWidgetClass;
 
 private:
 	void SpawnPlayerAndInit(); // 플레이어 소환 및 초기화
