@@ -39,9 +39,12 @@ UTexture2D* AEnemyOrderManager::GetIconForAction(AEnemyCharacter* Enemy)
 
 	EAIActionType Action = Enemy->PendingAction;
 
-	if (Action == EAIActionType::ReserveSkill_A || Action == EAIActionType::ReserveSkill_B)
+	if (Action == EAIActionType::ReserveSkill_A ||
+		Action == EAIActionType::ReserveSkill_B ||
+		Action == EAIActionType::ReserveSkill_Random)
 	{
-		// 만약 아이콘을 할당 안 했으면 Wait 아이콘이라도 리턴 (디버깅용)
+		// 만약 Icon_Charge 변수가 없다면 헤더에 추가하거나, Icon_Wait 등 다른 아이콘을 쓰세요.
+		// (사용자분 코드에 Icon_Charge가 있다고 가정했습니다)
 		return Icon_Charge ? Icon_Charge : Icon_Wait;
 	}
 
@@ -50,6 +53,8 @@ UTexture2D* AEnemyOrderManager::GetIconForAction(AEnemyCharacter* Enemy)
 	{
 		return Icon_Attack ? Icon_Attack : Icon_Wait;
 	}
+
+
 
 	// 이동 관련 (방향 계산 필요)
 	if (Action >= EAIActionType::Move_Front && Action <= EAIActionType::Move_Right)

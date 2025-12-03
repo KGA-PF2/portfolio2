@@ -57,29 +57,17 @@ public:
 
     // ───────── 상태 애니메이션 및 효과 ─────────
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|State")
-    TObjectPtr<UAnimMontage> HitReactionMontage;
+    TObjectPtr<UAnimMontage> StateMontage;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|State")
-    TObjectPtr<UAnimMontage> DeathMontage;
+    TObjectPtr<UAnimMontage> SpawnMontage;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|State")
     TObjectPtr<UParticleSystem> DeathParticle;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|State")
-    TObjectPtr<UAnimMontage> ChargeMontage;
-
     // ── 이동 ──
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
-    TObjectPtr<UAnimMontage> WalkFrontMontage;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
-    TObjectPtr<UAnimMontage> WalkBackMontage;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
-    TObjectPtr<UAnimMontage> WalkLeftMontage;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
-    TObjectPtr<UAnimMontage> WalkRightMontage;
+    TObjectPtr<UAnimMontage> WalkMontage;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
     TObjectPtr<UAnimMontage> WalkStopMontage;
@@ -88,22 +76,15 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Skill_A")
     TObjectPtr<UAnimMontage> Montage_Atk_A;      // 공격
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Skill_A")
-    TObjectPtr<UAnimMontage> Montage_AtkReady_A; // 준비(Loop)
-
     // ── 스킬 B ──
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Skill_B")
     TObjectPtr<UAnimMontage> Montage_Atk_B;      // 공격
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Skill_B")
-    TObjectPtr<UAnimMontage> Montage_AtkReady_B; // 준비(Loop)
 
     // ───────── 헬퍼 함수 ─────────
 
     // 스킬 데이터에 맞는 공격 몽타주 반환
     UAnimMontage* GetAttackMontageForSkill(USkillBase* SkillDef);
 
-    // 스킬 데이터에 맞는 준비 몽타주 반환
     UAnimMontage* GetReadyMontageForSkill(USkillBase* SkillDef);
 
     // 공격 준비 모션 재생 (Ready)
@@ -137,6 +118,7 @@ private:
     // 스킬 관련
     void Action_FireReserved();
     void Action_ReserveSkill(USkillBase* Skill);
+    void Action_ReserveRandomSkill();
     void Action_RotateToPlayer();
 
     // 유틸리티

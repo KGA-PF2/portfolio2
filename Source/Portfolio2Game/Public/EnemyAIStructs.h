@@ -12,6 +12,7 @@ enum class EAIActionType : uint8
 	FireReserved,       // 장전된 스킬 발사
 	ReserveSkill_A,     // 스킬 A 예약
 	ReserveSkill_B,     // 스킬 B 예약
+	ReserveSkill_Random, // 랜덤 스킬 예약
 
 	// [이동] 상대적 방향 기준 (내 시점)
 	Move_Front,         // 전진
