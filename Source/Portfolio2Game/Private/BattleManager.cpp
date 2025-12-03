@@ -190,6 +190,8 @@ void ABattleManager::StartNextRound()
 
 void ABattleManager::OnEnemyKilled(AEnemyCharacter* DeadEnemy)
 {
+	CurrentKillCount++;
+
 	// 살아있는 적 수 계산 (방금 죽은 적 제외)
 	int32 AliveCount = 0;
 	for (AEnemyCharacter* E : Enemies)
