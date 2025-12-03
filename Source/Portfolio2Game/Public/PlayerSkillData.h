@@ -49,7 +49,6 @@ public:
     // 강화 반영된 총 쿨타임 (TotalCooldown이 0이면 계산해서 반환)
     FORCEINLINE int32 GetEffectiveTotalCooldown() const
     {
-        if (TotalCooldown > 0) return TotalCooldown;
         if (!SkillInfo) return 0;
         return FMath::Max(0, SkillInfo->BaseCooldown + CooldownDelta);
     }
@@ -64,7 +63,7 @@ public:
     void InitializeFromBase()
     {
         if (!SkillInfo) return;
-        TotalCooldown = FMath::Max(0, SkillInfo->BaseCooldown + CooldownDelta);
+        TotalCooldown = 1;
         CurrentCooldown = 0;
     }
 };

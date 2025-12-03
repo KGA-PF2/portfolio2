@@ -7,6 +7,7 @@
 #include "GridDataInterface.h"
 #include "EnemyOrderManager.h"
 #include "Camera/CameraActor.h"
+#include "StageData.h"
 #include "BattleManager.generated.h"
 
 // 전방 선언
@@ -52,7 +53,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle")
 	int32 MaxRoundCount = 3;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle")
 	int32 M_TurnsToNextRound = 3;
 
 	int32 TurnsSinceSingleEnemy = 0;
@@ -120,12 +121,6 @@ public:
 	void EndBattle(bool bPlayerVictory);
 
 	UFUNCTION(BlueprintCallable)
-	void StartRound();
-
-	UFUNCTION(BlueprintCallable)
-	void EndRound();
-
-	UFUNCTION(BlueprintCallable)
 	void StartPlayerTurn();
 
 	UFUNCTION(BlueprintCallable)
@@ -133,6 +128,20 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void EndCharacterTurn(ACharacterBase* Character);
+
+	// ───────── 스테이지 설정 (에디터 할당) ─────────
+	// 이 맵에서 나올 수 있는 스테이지 후보들 (예: DA_Stage_A, DA_Stage_B)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage Setup")
+	TArray<UStageData*> PossibleStages;
+
+	// ───────── 런타임 상태 ─────────
+	// 현재 결정된 스테이지 (PossibleStages 중 하나가 랜덤 선택됨)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stage Status")
+	UStageData* CurrentStageData;
+
+	// 현재 라운드 인덱스 (0부터 시작)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stage Status")
+	int32 CurrentRoundIndex = 0;
 
 protected:
 	// 현재 행동 중인 적의 인덱스 (0, 1, 2...)
@@ -159,8 +168,12 @@ protected:
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
 	void SpawnPlayer();
 
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
-	void SpawnEnemiesForRound();
+
+	// 현재 라운드 데이터에 맞춰 적 소환
+	void SpawnCurrentRoundEnemies();
+
+	// 다음 라운드 시작 (적이 다 죽거나 2턴 지났을 때 호출)
+	void StartNextRound();
 
 	// ──────────────────────────────
 	// 유틸리티
