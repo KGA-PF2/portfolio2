@@ -397,6 +397,22 @@ void AEnemyCharacter::Action_FireReserved()
 void AEnemyCharacter::Action_ReserveSkill(USkillBase* Skill)
 {
 	ReservedSkill = Skill;
+
+	// [추가] 1. 몽타주 가져오기
+	UAnimMontage* Montage = GetAttackMontageForSkill(Skill);
+
+	if (Montage && GetMesh()->GetAnimInstance())
+	{
+		// 2. 몽타주 재생 (Ready 섹션부터 시작)
+		// 에디터 설정에 따라 Ready -> Ready_Stay(Loop)로 자연스럽게 이어집니다.
+		// Montage_Play로 재생을 시작하고, JumpToSection으로 확실하게 위치를 잡습니다.
+		if (!GetMesh()->GetAnimInstance()->Montage_IsPlaying(Montage))
+		{
+			GetMesh()->GetAnimInstance()->Montage_Play(Montage);
+		}
+		GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("Ready"), Montage);
+	}
+
 	UE_LOG(LogTemp, Warning, TEXT("Skill Reserved: %s"), *Skill->SkillName.ToString());
 	bJustAttacked = false;
 	EndAction();

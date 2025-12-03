@@ -53,6 +53,7 @@ void UGA_SkillAttack::ExecuteAttackSequence(ACharacterBase* Caster, USkillBase* 
 {
 	// 1. 기본값 (플레이어용 DA 몽타주)
 	UAnimMontage* MontageToPlay = SkillInfo->SkillMontage;
+	FName StartSectionName = NAME_None; // 기본값: 처음부터 재생
 
 	// 2. 적 캐릭터라면? -> 적 전용 몽타주로 교체
 	if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Caster))
@@ -61,6 +62,17 @@ void UGA_SkillAttack::ExecuteAttackSequence(ACharacterBase* Caster, USkillBase* 
 		if (EnemyMontage)
 		{
 			MontageToPlay = EnemyMontage;
+
+			// ★ [핵심 수정 1] 이미 이 몽타주를 재생 중인가? (준비 자세 루프 중인가?)
+			if (Caster->GetMesh() && Caster->GetMesh()->GetAnimInstance())
+			{
+				if (Caster->GetMesh()->GetAnimInstance()->Montage_IsPlaying(MontageToPlay))
+				{
+					// 재생 중이라면 루프를 끊고 바로 "Attack_Start" 섹션부터 시작!
+					// 이렇게 하면 Ready -> Ready_Stay(Loop) -> Attack_Start 로 매끄럽게 이어집니다.
+					StartSectionName = FName("Attack_Start");
+				}
+			}
 		}
 	}
 
@@ -82,7 +94,7 @@ void UGA_SkillAttack::ExecuteAttackSequence(ACharacterBase* Caster, USkillBase* 
 		NAME_None,
 		MontageToPlay,
 		1.0f,
-		NAME_None,
+		StartSectionName,
 		false
 	);
 
@@ -110,11 +122,11 @@ void UGA_SkillAttack::OnMontageEnded()
 	ACharacterBase* Caster = Cast<ACharacterBase>(GetAvatarActorFromActorInfo());
 
 	// 어빌리티 종료
-	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 	if (Caster)
 	{
 		Caster->SetAnimRootMotionTranslationScale(1.0f); // 이동 가능 복구
 	}
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 	if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Caster))
 	{
 		Enemy->EndAction();
