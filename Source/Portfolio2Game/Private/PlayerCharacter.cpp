@@ -39,33 +39,30 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	// 1. ASC 초기화 (기존 코드)
+	// 1. ASC 초기화 (기존 유지)
 	if (AbilitySystem)
 	{
 		AbilitySystem->InitAbilityActorInfo(this, this);
 	}
 
-	// 2. ★ [신규] 데이터 로드 (GameInstance 체크)
-	// (BeginPlay 대신 여기서 처리합니다)
+	// 2. 데이터 로드 (기존 유지)
 	if (HasAuthority())
 	{
 		UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance());
-
-		// 저장된 데이터가 있다면 불러오기
 		if (GI && GI->HasSavedData())
 		{
-			// 체력 복구
 			if (Attributes)
 			{
 				Attributes->InitHealth(GI->SavedMaxHP);
 				Attributes->SetHealth_Internal(GI->SavedCurrentHP);
 			}
-			// 스킬 복구
 			OwnedSkills = GI->SavedSkills;
 
-			UE_LOG(LogTemp, Warning, TEXT("[Player] Data Loaded from GI (HP: %.0f)"), GI->SavedCurrentHP);
+			for (FPlayerSkillData& Skill : OwnedSkills)
+			{
+				Skill.CurrentCooldown = 0;
+			}
 		}
-		// 저장된 게 없다면 (첫 판) -> 기본 초기화
 		else
 		{
 			InitAttributes();
@@ -73,7 +70,7 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 		}
 	}
 
-	// 3. 입력 컨텍스트 설정 (기존 코드)
+	// 3. 입력 설정 & ★ 마우스 무조건 켜기 (통합) ★
 	APlayerController* PC = Cast<APlayerController>(NewController);
 	if (PC)
 	{
@@ -85,6 +82,18 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 			}
 		}
 	}
+
+	PC->bShowMouseCursor = true;
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetHideCursorDuringCapture(false); // 클릭 시 사라짐 방지
+
+	PC->SetInputMode(InputMode);
+
+	// 상태 초기화
+	bInputLocked = false;
+	bHasCommittedAction = false;
 }
 
 
@@ -129,6 +138,11 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		if (IA_DebugClear)
 		{
 			EnhancedInputComponent->BindAction(IA_DebugClear, ETriggerEvent::Started, this, &APlayerCharacter::Input_DebugStageClear);
+		}
+
+		if (IA_Pause)
+		{
+			EnhancedInputComponent->BindAction(IA_Pause, ETriggerEvent::Started, this, &APlayerCharacter::Input_Pause);
 		}
 	}
 	else
@@ -473,4 +487,71 @@ int32 APlayerCharacter::GetCurrentCooldownForSkill(int32 SkillIndex) const
 		return -1; // 잘못된 인덱스
 	}
 	return OwnedSkills[SkillIndex].CurrentCooldown;
+}
+
+void APlayerCharacter::Input_Pause()
+{
+	// 이미 일시정지 상태라면 -> 재개
+	if (UGameplayStatics::IsGamePaused(this))
+	{
+		ResumeGame();
+	}
+	// 게임 중이라면 -> 일시정지
+	else
+	{
+		if (!PauseMenuWidgetClass) return;
+
+		// 1. 게임 멈춤
+		UGameplayStatics::SetGamePaused(this, true);
+
+		// 2. UI 띄우기
+		if (!PauseMenuInstance)
+		{
+			PauseMenuInstance = CreateWidget<UUserWidget>(GetWorld(), PauseMenuWidgetClass);
+		}
+
+		if (PauseMenuInstance)
+		{
+			PauseMenuInstance->AddToViewport(9999); // 최상단
+		}
+
+		// 3. 입력 모드를 UI 전용으로 변경 (게임 조작 막기)
+		if (APlayerController* PC = Cast<APlayerController>(GetController()))
+		{
+			PC->bShowMouseCursor = true;
+			FInputModeUIOnly InputMode;
+
+			if (PauseMenuInstance)
+			{
+				InputMode.SetWidgetToFocus(PauseMenuInstance->TakeWidget());
+			}
+
+			PC->SetInputMode(InputMode);
+		}
+	}
+}
+
+void APlayerCharacter::ResumeGame()
+{
+	// 1. 게임 재개
+	UGameplayStatics::SetGamePaused(this, false);
+
+	// 2. UI 끄기
+	if (PauseMenuInstance)
+	{
+		PauseMenuInstance->RemoveFromParent();
+		PauseMenuInstance = nullptr; // 매번 새로 만들 거면 초기화, 재활용할 거면 유지
+	}
+
+	// 3. 입력 모드를 게임+UI로 복구 (우리가 쓰던 설정)
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->bShowMouseCursor = true;
+
+		FInputModeGameAndUI InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		InputMode.SetHideCursorDuringCapture(false);
+
+		PC->SetInputMode(InputMode);
+	}
 }

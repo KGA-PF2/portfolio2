@@ -210,6 +210,22 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Rotation")
 	TObjectPtr<UAnimMontage> Montage_Rotate180; // R (뒤로)
 
+	// [신규] 회전 보간을 위한 변수들
+	FQuat RotationStartQuat; // 시작 회전값 (쿼터니언)
+	FQuat RotationTargetQuat; // 목표 회전값
+	float RotationTimeElapsed = 0.0f;
+	float RotationDuration = 0.0f;
+
+	bool bIsRotating = false;      // 회전 모드 진입 여부 (Tick 활성화용)
+	bool bCanRotate = false;       // 실제 회전 수행 여부 (노티파이 구간용)
+
+	float ActualRotationDuration = 0.0f; // 실제 회전해야 할 시간 (TurnStart ~ TurnEnd)
+	float CurrentRotationTime = 0.0f;    // 현재 회전 진행 시간
+
+	bool bIsRotationWindowActive = false; // 노티파이 구간 안에 있는가?
+	float RotationWindowDuration = 0.0f; // 노티파이 전체 길이
+	float RotationWindowElapsed = 0.0f;  // 경과 시간
+
 	/*UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid")
 	bool bFacingRight = true;*/
 
@@ -226,6 +242,10 @@ public:
 	// [신규] 현재 바라보고 있는 방향 (기본값: Right)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid")
 	EGridDirection FacingDirection = EGridDirection::Right;
+
+	void BeginRotationWindow(float Duration);
+	void TickRotationWindow(float DeltaTime);
+	void EndRotationWindow();
 
 	// [신규] 해당 방향으로 즉시 회전 (턴 소모 포함)
 	UFUNCTION(BlueprintCallable, Category = "Move")
@@ -247,11 +267,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Attributes")
 	void ApplyDamage(float Damage);
 
-	// ❌  FOnAttributeChangeData 델리게이트 함수 선언을 제거합니다.
-	// UFUNCTION()
-	// void OnHealthChanged(const FOnAttributeChangeData& Data);
-
 	/** BP에서 사망 처리를 위한 이벤트 */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Status")
 	void OnDeath();
+
+	UFUNCTION(BlueprintCallable, Category = "Anim")
+	void OnAnimNotify_TurnStart();
+
+	UFUNCTION(BlueprintCallable, Category = "Anim")
+	void OnAnimNotify_TurnEnd();
 };

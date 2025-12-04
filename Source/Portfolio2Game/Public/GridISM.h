@@ -40,6 +40,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
 	float HPBarYOffsetRatio = -0.45f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
+	float HPBarWidthRatio = 0.85f;
+
+	// ★ [신규] HP바 세로 높이 (기본 30.0)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
+	float HPBarHeight = 30.0f;
+
 	// [신규] 위의 기본 계산 결과에 "추가로" 더할 XYZ 값 (미세 조정용)
 	// 기본값 (0,0,0)이면 기존 위치와 완전히 동일합니다.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")

@@ -211,4 +211,25 @@ private:
 	/** (신규) 큐에서 스킬을 하나씩 꺼내 실행하는 함수 (UI 큐 사용) */
 	void ExecuteNextSkillInQueue_UI();
 
+
+public:
+	// [신규] 일시정지 메뉴 위젯 클래스 (에디터에서 할당)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> PauseMenuWidgetClass;
+
+	// [신규] 생성된 위젯 임시 저장
+	UPROPERTY()
+	UUserWidget* PauseMenuInstance;
+
+	// [신규] UI(버튼)에서 호출할 게임 재개 함수
+	UFUNCTION(BlueprintCallable, Category = "GameFlow")
+	void ResumeGame();
+
+protected:
+	// [신규] ESC 키 (일시정지)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<UInputAction> IA_Pause;
+
+	// [신규] 일시정지 토글 함수
+	void Input_Pause();
 };

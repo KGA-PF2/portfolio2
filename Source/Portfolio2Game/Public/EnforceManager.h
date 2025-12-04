@@ -6,6 +6,7 @@
 #include "SkillBase.h"
 #include "EnforceManager.generated.h"
 
+
 // 보상 종류 구분
 UENUM(BlueprintType)
 enum class ERewardType : uint8
@@ -92,8 +93,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	TObjectPtr<class ACameraActor> StageCamera;
 
+	// [신규] 연출 위젯 임시 저장
+	UPROPERTY()
+	UUserWidget* CurrentTransitionWidget;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> TopBarWidgetClass;
+
 private:
 	void SpawnPlayerAndInit(); // 플레이어 소환 및 초기화
 	void CompleteStage(); // 저장 및 이동 시작
 	void MoveToNextLevel(); // 실제 이동
+	void ExecuteUncover(); // 화면 덮기 연출
+	
+	UFUNCTION()
+	void DelayedInputSetup();
 };

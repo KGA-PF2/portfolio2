@@ -33,6 +33,7 @@ void AEnforceManager::BeginPlay()
 		if (HUDRef)
 		{
 			HUDRef->AddToViewport();
+			UE_LOG(LogTemp, Error, TEXT("EnforceManager: Enforce UI MADE!"));
 		}
 	}
 	else
@@ -40,23 +41,79 @@ void AEnforceManager::BeginPlay()
 		UE_LOG(LogTemp, Error, TEXT("EnforceManager: HUD Class is None!"));
 	}
 
-	// 3. 마우스 커서 활성화 (드래그 앤 드롭 필수)
+	// 3. 레벨 전환 연출 처리
+	UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance());
+	if (GI && GI->bIsLevelTransitioning)
+	{
+		GI->bIsLevelTransitioning = false; // 플래그 해제
+
+		if (TransitionWidgetClass)
+		{
+			// 화면을 덮은 상태로 위젯 생성
+			CurrentTransitionWidget = CreateWidget<UUserWidget>(GetWorld(), TransitionWidgetClass);
+			if (CurrentTransitionWidget)
+			{
+				CurrentTransitionWidget->AddToViewport(9999); // 최상단
+
+				// 0.2초 뒤에 걷히기 시작 (로딩 튀는 것 방지)
+				FTimerHandle Handle;
+				GetWorld()->GetTimerManager().SetTimer(Handle, this, &AEnforceManager::ExecuteUncover, 0.2f, false);
+			}
+		}
+	}
+
+	if (TopBarWidgetClass)
+	{
+		UUserWidget* TopBar = CreateWidget<UUserWidget>(GetWorld(), TopBarWidgetClass);
+		if (TopBar) TopBar->AddToViewport(9000);
+	}
+
+	//delayedInputSetup실행
+	FTimerHandle InputSetupHandle;
+	GetWorld()->GetTimerManager().SetTimer(InputSetupHandle, this, &AEnforceManager::DelayedInputSetup, 0.1f, false);
+
+}
+
+
+void AEnforceManager::DelayedInputSetup()
+{
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
 	if (PC)
 	{
+		// 1. 마우스 커서 강제 활성화
 		PC->bShowMouseCursor = true;
 
+		// 2. 입력 모드 설정
 		FInputModeGameAndUI InputMode;
 
+		// HUD에 포커스 (드래그 앤 드롭을 위해 필수)
 		if (HUDRef)
 		{
 			InputMode.SetWidgetToFocus(HUDRef->TakeWidget());
 		}
 
+		// 마우스 가두지 않음
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+		// ★ [중요] 클릭 시 커서 사라짐 방지
+		InputMode.SetHideCursorDuringCapture(false);
+
 		PC->SetInputMode(InputMode);
+
+		UE_LOG(LogTemp, Warning, TEXT("EnforceManager: Input Mode Force Applied (Delayed)"));
 	}
 }
 
+void AEnforceManager::ExecuteUncover()
+{
+	if (CurrentTransitionWidget)
+	{
+		FOutputDeviceNull Ar;
+		CurrentTransitionWidget->CallFunctionByNameWithArguments(TEXT("PlayUncover"), Ar, nullptr, true);
+
+		CurrentTransitionWidget = nullptr;
+	}
+}
 
 void AEnforceManager::SpawnPlayerAndInit()
 {
@@ -194,15 +251,11 @@ void AEnforceManager::AcquireNewSkill(USkillBase* NewSkill)
 
 	int32 NewIndex = Player->OwnedSkills.Add(NewData);
 
-	Player->OwnedSkills.Add(NewData);
-
 	UE_LOG(LogTemp, Warning, TEXT("New Skill Acquired!"));
 
 	Player->OnNewSkillAcquired.Broadcast(NewIndex);
 	FTimerHandle WaitHandle;
 	GetWorld()->GetTimerManager().SetTimer(WaitHandle, this, &AEnforceManager::CompleteStage, 1.5f, false);
-
-	CompleteStage();
 }
 
 void AEnforceManager::CompleteStage()

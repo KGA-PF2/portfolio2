@@ -7,6 +7,7 @@
 #include "Components/WidgetComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "PlayerCharacter.h" 
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h" 
 #include "GridISM.h"
 #include "GA_Move.h"
@@ -29,7 +30,7 @@ void ACharacterBase::BeginPlay()
 
 	if (!BattleManagerRef)
 	{
-		UE_LOG(LogTemp, Error, TEXT("%s: 맵에서 BattleManager를 찾을 수 없습니다!"), *GetName());
+		//UE_LOG(LogTemp, Error, TEXT("%s: 맵에서 BattleManager를 찾을 수 없습니다!"), *GetName());
 	}
 
 	if (AbilitySystem)
@@ -73,7 +74,7 @@ void ACharacterBase::BeginPlay()
 	}
 
 	// 게임 시작 시 기본 방향(Right)으로 정렬
-	RotateToDirection(EGridDirection::Right, false);
+	//RotateToDirection(EGridDirection::Right, false);
 }
 
 
@@ -171,47 +172,69 @@ FRotator ACharacterBase::GetRotationFromEnum(EGridDirection Dir) const
 
 void ACharacterBase::RequestRotation(EGridDirection NewDir, UAnimMontage* MontageToPlay)
 {
-	// 1. 일단 턴 행동 시작으로 간주 (입력 잠금 등)
-	// (PlayerCharacter 등에서 이미 잠금 처리했겠지만 확실하게)
 	bCanAct = false;
 	PendingRotationDirection = NewDir;
-	FacingDirection = NewDir; // 논리적 방향은 미리 업데이트 (UI 등 반영)
-
+	FacingDirection = NewDir;
 	OnBusyStateChanged.Broadcast(true);
 
-	// 2. 애니메이션이 유효한지 체크
-	if (MontageToPlay && GetMesh()->GetAnimInstance())
+	// 목표 각도 계산해두기
+	RotationStartQuat = GetActorQuat();
+	RotationTargetQuat = GetRotationFromEnum(NewDir).Quaternion();
+
+	// 방해꾼 끄기
+	bUseControllerRotationYaw = false;
+	if (GetCharacterMovement()) GetCharacterMovement()->bOrientRotationToMovement = false;
+	if (GetMesh()->GetAnimInstance()) GetMesh()->GetAnimInstance()->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
+
+	// 애니메이션 재생
+	if (MontageToPlay)
 	{
-		// A. 애니메이션 재생
-		float Duration = PlayAnimMontage(MontageToPlay);
+		PlayAnimMontage(MontageToPlay, 2.0f);
 
-		if (Duration > 0.f)
-		{
-			// B. 종료 델리게이트 연결 (애니메이션 끝나면 FinalizeRotation 실행)
-			FOnMontageEnded EndDelegate;
-			EndDelegate.BindUObject(this, &ACharacterBase::FinalizeRotation);
-			GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
-
-			// 로그
-			// UE_LOG(LogTemp, Log, TEXT("Rotation Anim Started: %s"), *MontageToPlay->GetName());
-			return; // 여기서 리턴하면 FinalizeRotation이 나중에 호출됨
-		}
+		// 종료 델리게이트 (안전장치)
+		FOnMontageEnded EndDelegate;
+		EndDelegate.BindUObject(this, &ACharacterBase::FinalizeRotation);
+		GetMesh()->GetAnimInstance()->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
 	}
+	else
+	{
+		FinalizeRotation(nullptr, false);
+	}
+}
 
-	// 3. 애니메이션이 없거나 재생 실패 시 -> 즉시 회전
-	FinalizeRotation(nullptr, false);
+void ACharacterBase::OnAnimNotify_TurnStart()
+{
+	if (bIsRotating)
+	{
+		bCanRotate = true;
+		CurrentRotationTime = 0.0f;
+		// ★ 회전 구간 길이 설정 (예: 0.3초 동안 휙 돈다)
+		// 몽타주에서 노티파이 간격을 잴 수 없으므로 하드코딩하거나 파라미터로 받아야 함.
+		// 여기서는 0.3초(빠름)로 설정합니다.
+		ActualRotationDuration = 0.3f;
+	}
+}
+
+void ACharacterBase::OnAnimNotify_TurnEnd()
+{
+	// 회전 강제 완료
+	if (bIsRotating)
+	{
+		bCanRotate = false;
+		// 혹시 덜 돌았으면 최종 각도로 고정
+		SetActorRotation(RotationTargetQuat);
+	}
 }
 
 void ACharacterBase::FinalizeRotation(UAnimMontage* Montage, bool bInterrupted)
 {
-	// 1. 메쉬를 실제 방향으로 회전시킴 (Snap)
+	bIsRotationWindowActive = false;
 	SetActorRotation(GetRotationFromEnum(PendingRotationDirection));
-
-	// 2. 턴 종료 처리
-	// (EndAction 내부에서 BattleManager에게 턴 넘김을 알림)
+	if (GetMesh() && GetMesh()->GetAnimInstance())
+	{
+		GetMesh()->GetAnimInstance()->SetRootMotionMode(ERootMotionMode::RootMotionFromMontagesOnly);
+	}
 	EndAction();
-
-	// UE_LOG(LogTemp, Log, TEXT("Rotation Finalized."));
 }
 
 void ACharacterBase::RotateToDirection(EGridDirection NewDir, bool bConsumeTurn)
@@ -417,6 +440,7 @@ void ACharacterBase::Tick(float DeltaTime)
 			}
 		}
 	}
+
 }
 
 void ACharacterBase::OnStopAnimEnded()
@@ -424,6 +448,51 @@ void ACharacterBase::OnStopAnimEnded()
 	// 변수 초기화 (다음 턴을 위해)
 	CurrentStopMontage = nullptr;
 	EndAction();
+}
+
+void ACharacterBase::BeginRotationWindow(float Duration)
+{
+	bIsRotationWindowActive = true;
+
+	// PlayRate가 2.0이면 실제 시간은 절반임.
+	// NotifyState의 Duration은 '에셋 기준 시간'이므로 PlayRate로 나눠줘야 실제 시간이 됨.
+	float CurrentPlayRate = 1.0f;
+	if (GetMesh()->GetAnimInstance() && GetMesh()->GetAnimInstance()->GetCurrentActiveMontage())
+	{
+		CurrentPlayRate = GetMesh()->GetAnimInstance()->GetCurveValue(TEXT("PlayRate")); // 만약 커브로 제어 안하면 아래 사용
+		// 혹은 간단히:
+		CurrentPlayRate = 2.0f; // 아까 2.0으로 틀었으니까 (하드코딩 싫으면 변수로 저장해두세요)
+	}
+
+	RotationWindowDuration = Duration / CurrentPlayRate;
+	RotationWindowElapsed = 0.0f;
+}
+
+// 3. [신규] 노티파이가 호출: 매 프레임 회전
+void ACharacterBase::TickRotationWindow(float DeltaTime)
+{
+	if (!bIsRotationWindowActive) return;
+
+	RotationWindowElapsed += DeltaTime;
+
+	// 진행률 (0 ~ 1)
+	float Alpha = 0.0f;
+	if (RotationWindowDuration > KINDA_SMALL_NUMBER)
+	{
+		Alpha = FMath::Clamp(RotationWindowElapsed / RotationWindowDuration, 0.0f, 1.0f);
+	}
+
+	// Slerp로 부드럽게 돌리기
+	FQuat NewQuat = FQuat::Slerp(RotationStartQuat, RotationTargetQuat, Alpha);
+	SetActorRotation(NewQuat);
+}
+
+// 4. [신규] 노티파이가 호출: 회전 끝
+void ACharacterBase::EndRotationWindow()
+{
+	bIsRotationWindowActive = false;
+	// 목표 각도로 확실하게 고정
+	SetActorRotation(RotationTargetQuat);
 }
 
 // 이동 시작 (내부 함수)

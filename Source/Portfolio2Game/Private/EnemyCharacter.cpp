@@ -33,6 +33,22 @@ void AEnemyCharacter::BeginPlay()
 	{
 		OnHealthChanged.AddDynamic(this, &AEnemyCharacter::HandleHealthChanged);
 	}
+
+	//1203추가
+	if (GetMesh() && GetMesh()->GetAnimInstance())
+	{
+		// A. 별도 스폰 몽타주가 있다면 (Super 몹 등)
+		if (SpawnMontage)
+		{
+			PlayAnimMontage(SpawnMontage);
+		}
+		// B. 없다면 State 몽타주의 Default 섹션 재생
+		else if (StateMontage)
+		{
+			GetMesh()->GetAnimInstance()->Montage_Play(StateMontage);
+			GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("Default"), StateMontage);
+		}
+	}
 }
 
 UAnimMontage* AEnemyCharacter::GetAttackMontageForSkill(USkillBase* SkillDef)
@@ -44,25 +60,28 @@ UAnimMontage* AEnemyCharacter::GetAttackMontageForSkill(USkillBase* SkillDef)
 
 UAnimMontage* AEnemyCharacter::GetReadyMontageForSkill(USkillBase* SkillDef)
 {
-	if (SkillDef == Skill_A) return Montage_AtkReady_A;
-	if (SkillDef == Skill_B) return Montage_AtkReady_B;
+	if (SkillDef == Skill_A) return Montage_Atk_A;
+	if (SkillDef == Skill_B) return Montage_Atk_B;
 	return nullptr;
 }
 
 // ───────── 공격 준비 모션 재생 ─────────
 void AEnemyCharacter::PlayChargeMontageIfReady()
 {
-	// 이번 턴에 발사(FireReserved) 예정이라면 -> 준비 동작 재생
+	// 이번 턴에 발사할 예정이고, 예약된 스킬이 있다면
 	if (PendingAction == EAIActionType::FireReserved && ReservedSkill)
 	{
-		UAnimMontage* ReadyMontage = GetReadyMontageForSkill(ReservedSkill);
+		UAnimMontage* Montage = GetReadyMontageForSkill(ReservedSkill);
 
-		if (ReadyMontage && GetMesh()->GetAnimInstance())
+		if (Montage && GetMesh()->GetAnimInstance())
 		{
-			if (!GetMesh()->GetAnimInstance()->Montage_IsPlaying(ReadyMontage))
+			// 이미 재생 중이 아니면 재생
+			if (!GetMesh()->GetAnimInstance()->Montage_IsPlaying(Montage))
 			{
-				PlayAnimMontage(ReadyMontage);
+				GetMesh()->GetAnimInstance()->Montage_Play(Montage);
 			}
+			// ★ "Ready" 섹션으로 이동 -> 이후 "Ready_Stay"에서 루프 돎
+			GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("Ready"), Montage);
 		}
 	}
 }
@@ -123,6 +142,7 @@ void AEnemyCharacter::DecideNextAction()
 	}
 
 	PendingAction = BestAction;
+	PlayChargeMontageIfReady();
 }
 
 // 2단계: 행동하기 (저장된 값으로 실행)
@@ -148,40 +168,8 @@ void AEnemyCharacter::Action_MoveDirectly(EGridDirection WorldDir)
 		return;
 	}
 
+	RunMontage = WalkMontage;
 	CurrentStopMontage = WalkStopMontage;
-
-	// ───────── 1. 몽타주 결정 (상대 방향 역산) ─────────
-	// 내가 보고 있는 방향(Facing)과 가야 할 월드 방향(WorldDir)을 비교해서
-	// 어떤 몽타주(앞/뒤/좌/우)를 틀어야 할지 결정합니다.
-
-	if (FacingDirection == EGridDirection::Right) // 나는 오른쪽(X+)을 보는 중
-	{
-		if (WorldDir == EGridDirection::Right) RunMontage = WalkFrontMontage; // 전진
-		else if (WorldDir == EGridDirection::Left)  RunMontage = WalkBackMontage;  // 후퇴
-		else if (WorldDir == EGridDirection::Up)    RunMontage = WalkLeftMontage;  // 왼쪽(Y-)으로 게걸음
-		else if (WorldDir == EGridDirection::Down)  RunMontage = WalkRightMontage; // 오른쪽(Y+)으로 게걸음
-	}
-	else if (FacingDirection == EGridDirection::Left) // 나는 왼쪽(X-)을 보는 중
-	{
-		if (WorldDir == EGridDirection::Left)  RunMontage = WalkFrontMontage; // 전진
-		else if (WorldDir == EGridDirection::Right) RunMontage = WalkBackMontage;  // 후퇴
-		else if (WorldDir == EGridDirection::Down)  RunMontage = WalkLeftMontage;  // 왼쪽(Y+)으로 게걸음
-		else if (WorldDir == EGridDirection::Up)    RunMontage = WalkRightMontage; // 오른쪽(Y-)으로 게걸음
-	}
-	else if (FacingDirection == EGridDirection::Up) // 나는 위쪽(Y-)을 보는 중
-	{
-		if (WorldDir == EGridDirection::Up)    RunMontage = WalkFrontMontage;
-		else if (WorldDir == EGridDirection::Down)  RunMontage = WalkBackMontage;
-		else if (WorldDir == EGridDirection::Left)  RunMontage = WalkLeftMontage;  // 왼쪽(X-)
-		else if (WorldDir == EGridDirection::Right) RunMontage = WalkRightMontage; // 오른쪽(X+)
-	}
-	else if (FacingDirection == EGridDirection::Down) // 나는 아래쪽(Y+)을 보는 중
-	{
-		if (WorldDir == EGridDirection::Down)  RunMontage = WalkFrontMontage;
-		else if (WorldDir == EGridDirection::Up)    RunMontage = WalkBackMontage;
-		else if (WorldDir == EGridDirection::Right) RunMontage = WalkLeftMontage;  // 왼쪽(X+)
-		else if (WorldDir == EGridDirection::Left)  RunMontage = WalkRightMontage; // 오른쪽(X-)
-	}
 
 	// ───────── 2. GAS 태그 결정 (월드 방향 그대로 사용) ─────────
 	FString MoveTag = "Ability.Move.Right";
@@ -291,6 +279,7 @@ void AEnemyCharacter::PerformAction(EAIActionType ActionType)
 	case EAIActionType::FireReserved:   Action_FireReserved(); break;
 	case EAIActionType::ReserveSkill_A: Action_ReserveSkill(Skill_A); break;
 	case EAIActionType::ReserveSkill_B: Action_ReserveSkill(Skill_B); break;
+	case EAIActionType::ReserveSkill_Random: Action_ReserveRandomSkill(); break;
 
 	case EAIActionType::Move_Front: Action_Move(EGridDirection::Right); break;
 	case EAIActionType::Move_Back:  Action_Move(EGridDirection::Left);  break;
@@ -318,24 +307,8 @@ void AEnemyCharacter::Action_Move(EGridDirection RelativeDir)
 		return;
 	}
 
+	RunMontage = WalkMontage;
 	CurrentStopMontage = WalkStopMontage;
-
-	// 1. 방향에 따라 RunMontage 교체 (CharacterBase의 변수를 덮어씌움)
-	switch (RelativeDir)
-	{
-	case EGridDirection::Right: // 전진
-		RunMontage = WalkFrontMontage;
-		break;
-	case EGridDirection::Left:  // 후퇴
-		RunMontage = WalkBackMontage;
-		break;
-	case EGridDirection::Up:    // 왼쪽 게걸음
-		RunMontage = WalkLeftMontage;
-		break;
-	case EGridDirection::Down:  // 오른쪽 게걸음
-		RunMontage = WalkRightMontage;
-		break;
-	}
 
 	FString MoveTag = "Ability.Move.Right";
 
@@ -397,9 +370,41 @@ void AEnemyCharacter::Action_FireReserved()
 void AEnemyCharacter::Action_ReserveSkill(USkillBase* Skill)
 {
 	ReservedSkill = Skill;
+
 	UE_LOG(LogTemp, Warning, TEXT("Skill Reserved: %s"), *Skill->SkillName.ToString());
 	bJustAttacked = false;
 	EndAction();
+}
+
+void AEnemyCharacter::Action_ReserveRandomSkill()
+{
+	// 1. 둘 다 스킬이 있는지 확인
+	if (Skill_A && Skill_B)
+	{
+		// 50:50 확률로 선택
+		if (FMath::RandBool())
+		{
+			Action_ReserveSkill(Skill_A);
+		}
+		else
+		{
+			Action_ReserveSkill(Skill_B);
+		}
+	}
+	// 2. 하나만 있다면 있는 거 사용
+	else if (Skill_A)
+	{
+		Action_ReserveSkill(Skill_A);
+	}
+	else if (Skill_B)
+	{
+		Action_ReserveSkill(Skill_B);
+	}
+	else
+	{
+		// 스킬이 아예 없으면 대기
+		EndAction();
+	}
 }
 
 void AEnemyCharacter::Action_RotateToPlayer()
@@ -608,22 +613,22 @@ void AEnemyCharacter::HandleHealthChanged(int32 NewHP, int32 NewMaxHP)
 {
 	if (bDead) return;
 
-	// 1. 사망 판정
 	if (NewHP <= 0)
 	{
 		Die();
 	}
-	// 2. 피격 판정 (살아있음)
 	else
 	{
-		// 피격 몽타주 재생 (G키 기능 자동화)
-		if (HitReactionMontage && GetMesh()->GetAnimInstance())
+		// ★ [수정] HitReactionMontage 삭제됨 -> StateMontage 사용
+		if (StateMontage && GetMesh()->GetAnimInstance())
 		{
-			// 현재 다른 몽타주(공격 등)가 재생 중이 아닐 때만, 혹은 피격이 최우선이라면 강제 재생
-			if (!GetMesh()->GetAnimInstance()->Montage_IsPlaying(nullptr))
+			// 이미 재생 중이 아니면 재생 시작
+			if (!GetMesh()->GetAnimInstance()->Montage_IsPlaying(StateMontage))
 			{
-				PlayAnimMontage(HitReactionMontage);
+				GetMesh()->GetAnimInstance()->Montage_Play(StateMontage);
 			}
+			// Hit 섹션으로 점프
+			GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("Hit"), StateMontage);
 		}
 	}
 }
@@ -635,10 +640,8 @@ void AEnemyCharacter::Die()
 
 	UE_LOG(LogTemp, Warning, TEXT("%s Died!"), *GetName());
 
-	// 1. 충돌 제거 (시체가 길 막지 않게)
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// 2. 사망 이펙트 (SpawnVFX 대체)
 	if (DeathParticle)
 	{
 		UGameplayStatics::SpawnEmitterAtLocation(
@@ -655,24 +658,19 @@ void AEnemyCharacter::Die()
 		BattleManagerRef->OnEnemyKilled(this);
 	}
 
-	// 3. 사망 애니메이션 (T키 대체)
-	float Duration = 0.f;
-	if (DeathMontage)
+	if (StateMontage && GetMesh()->GetAnimInstance())
 	{
-		Duration = PlayAnimMontage(DeathMontage);
+		GetMesh()->GetAnimInstance()->Montage_Play(StateMontage);
+		GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("Death"), StateMontage);
 	}
 
-	// 4. 애니메이션 끝난 뒤 사라짐 처리
-	float DestroyDelay = (Duration > 0.f) ? Duration : 0.1f;
-
+	float DestroyDelay = 3.0f;
 	FTimerHandle DeathTimer;
-	GetWorld()->GetTimerManager().SetTimer(
-        DeathTimer, 
-        this, 
-        &AEnemyCharacter::FinishDying, // 호출할 함수
-        DestroyDelay, 
-        false
-    );
+	GetWorld()->GetTimerManager().SetTimer(DeathTimer, [this]()
+		{
+			this->SetActorHiddenInGame(true);
+			this->Destroy();
+		}, DestroyDelay, false);
 }
 
 // 타이머가 끝나면 호출됨

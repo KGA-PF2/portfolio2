@@ -37,6 +37,6 @@ void APortfolio2GameGameMode::StartPlay()
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("GameMode: 맵에서 BattleManager를 찾을 수 없습니다! 레벨에 배치했는지 확인하세요."));
+		//UE_LOG(LogTemp, Error, TEXT("GameMode: 맵에서 BattleManager를 찾을 수 없습니다! 레벨에 배치했는지 확인하세요."));
 	}
 }
