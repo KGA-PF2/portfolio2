@@ -464,9 +464,22 @@ FVector ABattleManager::GridToWorld(FIntPoint GridPos) const
 FVector ABattleManager::GetWorldLocation(FIntPoint GridPos) const
 {
 	if (!GridInterface) return FVector::ZeroVector;
-	const FVector ActorOffset = IGridDataInterface::Execute_GetGridLocationOffset(GridActorRef);
-	const FVector CellWorldPos = GridToWorld(GridPos);
-	return ActorOffset + CellWorldPos;
+
+	// 1. 순수 로컬 좌표 계산 (X * Size, Y * Size)
+	const FVector CellLocalPos = GridToWorld(GridPos);
+
+	// 2. 로컬 오프셋 더하기 (미세 조정값)
+	const FVector LocalOffset = IGridDataInterface::Execute_GetGridLocationOffset(GridActorRef);
+	FVector FinalLocalPos = CellLocalPos + LocalOffset;
+
+	// 3. ★ [핵심] 로컬 좌표 -> 월드 좌표 변환 (TransformPosition)
+	// GridActorRef가 회전해 있거나 이동해 있어도, 그 기준으로 변환해 줍니다.
+	if (GridActorRef)
+	{
+		return GridActorRef->GetActorTransform().TransformPosition(FinalLocalPos);
+	}
+
+	return FinalLocalPos;
 }
 
 FVector ABattleManager::GetWorldLocationForCharacter(ACharacterBase* Character) const

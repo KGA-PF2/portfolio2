@@ -123,15 +123,7 @@ void AGridISM::UpdateTileHPBar(int32 Index, bool bShow, int32 CurrentHP, int32 M
 // 마우스가 그리드 칸 위에 있을 때 (매 프레임 호출될 수 있음)
 void AGridISM::VisibleGrid_Implementation(FVector GridLocation, FVector GridSize)
 {
-	// 1. 기존 커서 로직 (유지)
-	if (GridCursorActor)
-	{
-		GridCursorActor->SetActorHiddenInGame(false);
-		FVector NewLoc = GridLocation; NewLoc.Z += 5.0f;
-		GridCursorActor->SetActorLocation(NewLoc);
-	}
-
-	// 2. [신규] 해당 위치의 캐릭터 찾기
+	// 2. 해당 위치의 캐릭터 찾기
 	if (CachedBattleManager)
 	{
 		FVector LocalPos = GetActorTransform().InverseTransformPosition(GridLocation);
@@ -144,35 +136,33 @@ void AGridISM::VisibleGrid_Implementation(FVector GridLocation, FVector GridSize
 		// [디버그 2] 계산된 좌표 확인
 		UE_LOG(LogTemp, Warning, TEXT("Hover Coord: (%d, %d)"), X, Y);
 
-		if (X >= 0 && X < GridWidth && Y >= 0 && Y < GridHeight)
-		{
-			ACharacterBase* FoundChar = CachedBattleManager->GetCharacterAt(FIntPoint(X, Y));
+		// 해당 칸에 있는 캐릭터 찾기
+		ACharacterBase* FoundChar = CachedBattleManager->GetCharacterAt(FIntPoint(X, Y));
 
-			if (FoundChar != LastHoveredCharacter)
-			{
-				if (IsValid(LastHoveredCharacter)) LastHoveredCharacter->SetHighlight(false);
-				if (FoundChar) FoundChar->SetHighlight(true);
-				LastHoveredCharacter = FoundChar;
-			}
-		}
-		else
+		// 상태 갱신 (대상이 바뀌었을 때만)
+		if (FoundChar != LastHoveredCharacter)
 		{
-			// 맵 밖을 찍었으면 하이라이트 끄기
+			// 이전 캐릭터 끄기
 			if (IsValid(LastHoveredCharacter))
 			{
 				LastHoveredCharacter->SetHighlight(false);
-				LastHoveredCharacter = nullptr;
 			}
+
+			// 새 캐릭터 켜기
+			if (FoundChar)
+			{
+				FoundChar->SetHighlight(true);
+			}
+
+			// 현재 캐릭터 기억
+			LastHoveredCharacter = FoundChar;
 		}
 	}
 }
 
 void AGridISM::HiddenGrid_Implementation()
 {
-	// 1. 커서 숨김 (기존)
-	if (GridCursorActor) GridCursorActor->SetActorHiddenInGame(true);
-
-	// 2. [신규] 하이라이트 끄기
+	// 하이라이트 끄기
 	if (LastHoveredCharacter)
 	{
 		LastHoveredCharacter->SetHighlight(false);
