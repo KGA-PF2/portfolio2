@@ -151,6 +151,24 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 	EGridDirection Facing = Caster->FacingDirection;
 	float FinalDamage = (CachedDamage > 0.0f) ? CachedDamage : (float)SkillInfo->BaseDamage;
 
+	// 추가 [회전 계산] 캐릭터의 GridDirection에 맞춰 이펙트 회전값(Yaw) 설정
+	FRotator EffectRotation = FRotator::ZeroRotator;
+	switch (Facing)
+	{
+	case EGridDirection::Right: // X+ (Unreal 기준 Forward가 0도)
+		EffectRotation = FRotator(0.0f, 0.0f, 0.0f);
+		break;
+	case EGridDirection::Down:  // Y+ (Right가 90도)
+		EffectRotation = FRotator(0.0f, 90.0f, 0.0f);
+		break;
+	case EGridDirection::Left:  // X- (Back이 180도)
+		EffectRotation = FRotator(0.0f, 180.0f, 0.0f);
+		break;
+	case EGridDirection::Up:    // Y- (Left가 270도 혹은 -90도)
+		EffectRotation = FRotator(0.0f, -90.0f, 0.0f);
+		break;
+	}
+
 	for (const FIntPoint& Point : SkillInfo->AttackPattern)
 	{
 		// ───────── [좌표 회전 계산] ─────────
@@ -177,8 +195,11 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 
 		// 1. [시각 효과] Cascade 파티클 스폰
 		// 인덱스가 유효하지 않아도(맵 밖이라도) 좌표만 구해서 스폰함
+		// 추가 [위치 계산] 이펙트 오프셋도 회전 적용
 		FVector TargetPos = BM->GetWorldLocation(TargetCoord);
-		TargetPos += SkillInfo->EffectOffset;
+		
+		// 추가 [변경점] 단순히 더하는 것이 아니라, 회전값을 적용하여 더함
+		TargetPos += EffectRotation.RotateVector(SkillInfo->EffectOffset);
 
 		// 1순위: 나이아가라가 있으면 나이아가라 재생
 		if (SkillInfo->NiagaraEffect)
@@ -187,7 +208,7 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 				GetWorld(),
 				SkillInfo->NiagaraEffect,
 				TargetPos,
-				FRotator::ZeroRotator
+				EffectRotation // ZeroRotator -> EffectRotation 변경
 			);
 		}
 		// 2순위: 나이아가라가 없고 Cascade만 있으면 Cascade 재생
@@ -197,7 +218,7 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 				GetWorld(),
 				SkillInfo->TileEffect,
 				TargetPos,
-				FRotator::ZeroRotator,
+				EffectRotation, // ZeroRotator -> EffectRotation 변경
 				true,
 				EPSCPoolMethod::AutoRelease
 			);
