@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
-#include "PlayerSkillData.h" 
+#include "PlayerSkillData.h"
 #include "PortfolioGameInstance.generated.h"
 
 UCLASS()
@@ -11,34 +11,43 @@ class PORTFOLIO2GAME_API UPortfolioGameInstance : public UGameInstance
 	GENERATED_BODY()
 
 public:
-	// ───────── 저장될 데이터 (맵 넘어가도 유지됨) ─────────
+	virtual void Init() override;
 
-	// 1. 플레이어 체력 (다음 맵에서 이 체력으로 시작)
+	// ───────── 저장 데이터 (맵 이동 시 유지) ─────────
+
+	// 플레이어 체력 (-1.0f면 새 게임으로 간주하여 풀피 시작)
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "SaveData")
-	float SavedCurrentHP = -1.0f; // -1이면 풀피 시작(첫판)
+	float SavedCurrentHP = -1.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "SaveData")
-	float SavedMaxHP = 100.0f;
+	float SavedMaxHP = 10.0f;
 
-	// 2. 플레이어 스킬 및 강화 상태
+	// 플레이어 스킬 및 강화 상태
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "SaveData")
 	TArray<FPlayerSkillData> SavedSkills;
 
-	// 레벨 이동 연출 플래그
+	// 레벨 이동 연출 플래그 (모래바람 유지용)
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "SaveData")
 	bool bIsLevelTransitioning = false;
 
-	// ───────── 함수 ─────────
 
-	// 데이터를 저장하는 함수 (BattleManager가 호출)
-	void SavePlayerData(float CurrentHP, float MaxHP, const TArray<FPlayerSkillData>& Skills);
+	// ───────── 게임 통계 (신규) ─────────
 
-	// 데이터를 불러오는 헬퍼 함수 (PlayerCharacter가 호출)
-	bool HasSavedData() const { return SavedCurrentHP > 0.0f; }
+	// 총 플레이 시간 (초 단위, 누적)
+	UPROPERTY(BlueprintReadOnly, Category = "Stats")
+	float TotalPlayTime = 0.0f;
 
-	// ───────── 스테이지 네비게이션 ─────────
+	// 게임 전체 누적 처치 수
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats")
+	int32 TotalKillCount = 0;
 
-	// 전체 스테이지 순서 (에디터에서 설정: AA, Enforce, AB, Enforce, ABoss)
+	// 시간 측정을 위한 티커 핸들
+	FTSTicker::FDelegateHandle TickDelegateHandle;
+
+
+	// ───────── 스테이지 흐름 ─────────
+
+	// 전체 스테이지 순서 (에디터에서 설정: AA, Enforce, AB...)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GameFlow")
 	TArray<FName> StageList;
 
@@ -46,26 +55,31 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GameFlow")
 	int32 CurrentStageIndex = 0;
 
-	// ★ 난이도 (루프 돌 때마다 1씩 증가)
+	// 난이도 (루프 돌 때마다 증가)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GameFlow")
 	int32 DifficultyLevel = 0;
+
+
+	// ───────── 함수 ─────────
+
+	// 데이터 저장 (BattleManager -> GameInstance)
+	void SavePlayerData(float CurrentHP, float MaxHP, const TArray<FPlayerSkillData>& Skills);
+
+	// 데이터 존재 여부 확인 (PlayerCharacter가 호출)
+	bool HasSavedData() const { return SavedCurrentHP > 0.0f; }
 
 	// 다음 스테이지 이름 반환 및 인덱스 증가
 	UFUNCTION(BlueprintCallable, Category = "GameFlow")
 	FName GetNextStageName();
 
-	// ───────── 플레이 정보 ─────────
+	// ★ [신규] 게임 완전 초기화 (새 게임 시작 시 호출)
+	UFUNCTION(BlueprintCallable, Category = "GameFlow")
+	void ResetGameData();
 
-	UPROPERTY(BlueprintReadOnly, Category = "GameFlow")
-	float TotalPlayTime = 0.0f;
-
-	// [신규] 초기화 (타이머 시작)
-	virtual void Init() override;
-
-	// [신규] 매 초마다 시간 증가
-	void UpdatePlayTime();
-
-	// [신규] 현재 맵 이름 반환 (UI용)
+	// ★ [신규] 현재 맵 이름 반환 (UI 표시용)
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	FString GetCurrentStageDisplayName();
+
+	// (내부용) 매 프레임 시간 측정 함수
+	bool TickPlayTime(float DeltaTime);
 };

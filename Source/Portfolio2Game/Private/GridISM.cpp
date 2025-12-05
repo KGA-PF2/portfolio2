@@ -1,5 +1,8 @@
 ﻿#include "GridISM.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "BattleManager.h"
+#include "CharacterBase.h"
 #include "Components/WidgetComponent.h"
 
 AGridISM::AGridISM()
@@ -69,6 +72,9 @@ void AGridISM::BeginPlay()
 			}
 		}
 	}
+
+	CachedBattleManager = Cast<ABattleManager>(
+		UGameplayStatics::GetActorOfClass(GetWorld(), ABattleManager::StaticClass()));
 }
 
 FIntPoint AGridISM::GetGridCoordFromIndex_Implementation(int32 Index)
@@ -111,5 +117,65 @@ void AGridISM::UpdateTileHPBar(int32 Index, bool bShow, int32 CurrentHP, int32 M
 	else
 	{
 		TargetBar->SetActorHiddenInGame(true);
+	}
+}
+
+// 마우스가 그리드 칸 위에 있을 때 (매 프레임 호출될 수 있음)
+void AGridISM::VisibleGrid_Implementation(FVector GridLocation, FVector GridSize)
+{
+	// 1. 기존 커서 로직 (유지)
+	if (GridCursorActor)
+	{
+		GridCursorActor->SetActorHiddenInGame(false);
+		FVector NewLoc = GridLocation; NewLoc.Z += 5.0f;
+		GridCursorActor->SetActorLocation(NewLoc);
+	}
+
+	// 2. [신규] 해당 위치의 캐릭터 찾기
+	if (CachedBattleManager)
+	{
+		FVector LocalPos = GetActorTransform().InverseTransformPosition(GridLocation);
+		LocalPos -= GridLocationOffset;
+
+		// 그리드 인덱스 계산
+		int32 X = FMath::RoundToInt(LocalPos.X / GridSizeX);
+		int32 Y = FMath::RoundToInt(LocalPos.Y / GridSizeY);
+
+		// [디버그 2] 계산된 좌표 확인
+		UE_LOG(LogTemp, Warning, TEXT("Hover Coord: (%d, %d)"), X, Y);
+
+		if (X >= 0 && X < GridWidth && Y >= 0 && Y < GridHeight)
+		{
+			ACharacterBase* FoundChar = CachedBattleManager->GetCharacterAt(FIntPoint(X, Y));
+
+			if (FoundChar != LastHoveredCharacter)
+			{
+				if (IsValid(LastHoveredCharacter)) LastHoveredCharacter->SetHighlight(false);
+				if (FoundChar) FoundChar->SetHighlight(true);
+				LastHoveredCharacter = FoundChar;
+			}
+		}
+		else
+		{
+			// 맵 밖을 찍었으면 하이라이트 끄기
+			if (IsValid(LastHoveredCharacter))
+			{
+				LastHoveredCharacter->SetHighlight(false);
+				LastHoveredCharacter = nullptr;
+			}
+		}
+	}
+}
+
+void AGridISM::HiddenGrid_Implementation()
+{
+	// 1. 커서 숨김 (기존)
+	if (GridCursorActor) GridCursorActor->SetActorHiddenInGame(true);
+
+	// 2. [신규] 하이라이트 끄기
+	if (LastHoveredCharacter)
+	{
+		LastHoveredCharacter->SetHighlight(false);
+		LastHoveredCharacter = nullptr;
 	}
 }

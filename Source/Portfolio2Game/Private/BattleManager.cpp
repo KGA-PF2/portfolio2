@@ -175,6 +175,8 @@ void ABattleManager::StartNextRound()
 	// 다음 라운드가 있으면 진행
 	if (CurrentStageData->Rounds.IsValidIndex(CurrentRoundIndex + 1))
 	{
+		Enemies.RemoveAll([](AEnemyCharacter* E) { return E == nullptr || E->bDead; });
+
 		CurrentRoundIndex++;
 		CurrentRound++;
 		TurnsSinceSingleEnemy = 0;
@@ -192,6 +194,12 @@ void ABattleManager::OnEnemyKilled(AEnemyCharacter* DeadEnemy)
 {
 	CurrentKillCount++;
 
+	if (UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance()))
+	{
+		GI->TotalKillCount++;
+		UE_LOG(LogTemp, Warning, TEXT("Total Game Kills: %d"), GI->TotalKillCount);
+	}
+
 	// 살아있는 적 수 계산 (방금 죽은 적 제외)
 	int32 AliveCount = 0;
 	for (AEnemyCharacter* E : Enemies)
@@ -201,15 +209,13 @@ void ABattleManager::OnEnemyKilled(AEnemyCharacter* DeadEnemy)
 
 	if (AliveCount == 0)
 	{
-		// 적 전멸! 다음 라운드가 있나?
-		if (CurrentStageData && CurrentStageData->Rounds.IsValidIndex(CurrentRoundIndex + 1))
+		bool bHasNextRound = (CurrentStageData && CurrentStageData->Rounds.IsValidIndex(CurrentRoundIndex + 1));
+
+		if (!bHasNextRound)
 		{
-			StartNextRound(); // 즉시 다음 라운드 시작
-		}
-		// 없으면 클리어
-		else
-		{
-			ForceStageClear(); // 더 이상 라운드 없으면 맵 클리어!
+			// 마지막 라운드까지 다 잡았으면 -> 클리어 대기 (2초 뒤 이동 등)
+			FTimerHandle ClearHandle;
+			GetWorld()->GetTimerManager().SetTimer(ClearHandle, this, &ABattleManager::ForceStageClear, 2.0f, false);
 		}
 	}
 }
@@ -258,6 +264,17 @@ void ABattleManager::EndBattle(bool bPlayerVictory)
 
 void ABattleManager::StartPlayerTurn()
 {
+	int32 AliveCount = 0;
+	for (AEnemyCharacter* E : Enemies)
+	{
+		if (E && !E->bDead) AliveCount++;
+	}
+	if (AliveCount == 0 && CurrentStageData && CurrentStageData->Rounds.IsValidIndex(CurrentRoundIndex + 1))
+	{
+		StartNextRound();
+	}
+
+
 	TurnCount++;
 	UE_LOG(LogTemp, Warning, TEXT("TURN %d: PLAYER TURN"), TurnCount);
 	CurrentState = EBattleState::PlayerTurn;
@@ -302,6 +319,8 @@ void ABattleManager::StartPlayerTurn()
 		PlayerRef->OnTurnStart_BPEvent.Broadcast();
 		PlayerRef->StartAction();
 	}
+
+	
 }
 
 void ABattleManager::StartEnemyTurn()

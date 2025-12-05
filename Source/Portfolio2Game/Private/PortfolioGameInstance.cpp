@@ -4,15 +4,14 @@ void UPortfolioGameInstance::Init()
 {
 	Super::Init();
 
-	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([this](float Delta)
-		{
-			TotalPlayTime += Delta;
-			return true;
-		}));
+	TickDelegateHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &UPortfolioGameInstance::TickPlayTime)
+	);
 }
-
-void UPortfolioGameInstance::UpdatePlayTime()
+bool UPortfolioGameInstance::TickPlayTime(float DeltaTime)
 {
+	TotalPlayTime += DeltaTime;
+	return true; // true를 반환해야 타이머가 계속 반복됨
 }
 
 FString UPortfolioGameInstance::GetCurrentStageDisplayName()
@@ -63,4 +62,23 @@ FName UPortfolioGameInstance::GetNextStageName()
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] Moving to Stage Index: %d (%s)"), CurrentStageIndex, *NextMapName.ToString());
 
 	return NextMapName;
+}
+
+void UPortfolioGameInstance::ResetGameData()
+{
+	// 1. 저장 데이터 초기화
+	SavedCurrentHP = -1.0f; // 초기화 신호 (PlayerCharacter가 이를 보고 InitAttributes 실행)
+	SavedMaxHP = 10.0f;
+	SavedSkills.Empty();
+	bIsLevelTransitioning = false;
+
+	// 2. 스테이지 흐름 초기화
+	CurrentStageIndex = 0;
+	DifficultyLevel = 0;
+
+	// 3. 통계 초기화
+	TotalPlayTime = 0.0f;
+	TotalKillCount = 0;
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] Game Data Reset! Ready for New Game."));
 }
