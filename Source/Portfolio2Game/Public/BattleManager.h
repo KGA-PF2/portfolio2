@@ -88,10 +88,10 @@ public:
 	void ForceStageClear();
 
 	// ──────────────────────────────
-	// 액터 참조 (수정됨)
+	// 액터 참조
 	// ──────────────────────────────
 
-	/** (필수) 맵에 배치된 BP_GridISM 액터를 연결해야 합니다. */
+	/** 맵에 배치된 BP_GridISM 액터를 연결해야 합니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grid")
 	TObjectPtr<AActor> GridActorRef;
 
@@ -107,13 +107,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Actors")
 	TSubclassOf<AEnemyCharacter> EnemyClass;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-	TObjectPtr<ACameraActor> FieldCamera;
+public:
 
 	// ──────────────────────────────
 	// 전투 흐름
 	// ──────────────────────────────
-public:
+
 	UFUNCTION(BlueprintCallable)
 	void BeginBattle();
 
@@ -130,7 +129,7 @@ public:
 	void EndCharacterTurn(ACharacterBase* Character);
 
 	// ───────── 스테이지 설정 (에디터 할당) ─────────
-	// 이 맵에서 나올 수 있는 스테이지 후보들 (예: DA_Stage_A, DA_Stage_B)
+	// 이 맵에서 나올 수 있는 스테이지 후보들
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage Setup")
 	TArray<UStageData*> PossibleStages;
 
@@ -154,14 +153,14 @@ protected:
 
 	void ExecuteUncover();
 	// ──────────────────────────────
-	// 스폰 관련 (수정됨)
+	// 스폰 관련
 	// ──────────────────────────────
 protected:
-	/** (수정됨) 플레이어가 스폰될 타일의 인덱스 (세로 우선) */
+	/** 플레이어가 스폰될 타일의 인덱스 (세로 우선) */
 	UPROPERTY(EditAnywhere, Category = "Spawn")
 	int32 PlayerSpawnIndex = 10;
 
-	/** (수정됨) 적들이 스폰될 타일 인덱스 목록 (세로 우선) */
+	/** 적들이 스폰될 타일 인덱스 목록 (세로 우선) */
 	UPROPERTY(EditAnywhere, Category = "Spawn")
 	TArray<int32> EnemySpawnIndices;
 

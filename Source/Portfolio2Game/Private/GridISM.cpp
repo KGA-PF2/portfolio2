@@ -9,17 +9,18 @@ AGridISM::AGridISM()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// 스프링 암(지지대) 생성
+	USceneComponent* DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
+	RootComponent = DefaultSceneRoot;
+
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
-
-	// 지지대 설정 (원하는 뷰로 세팅)
 	CameraBoom->SetUsingAbsoluteRotation(true);
-	CameraBoom->TargetArmLength = 1200.0f;
-	CameraBoom->SetRelativeRotation(FRotator(-50.0f, 0.0f, 0.0f));
+
+	CameraBoom->SetRelativeRotation(FRotator(-50.0f, -90.0f, 0.0f));
+	CameraBoom->TargetArmLength = 1413.0f;
+	CameraBoom->SocketOffset = FVector(0.0f, 600.0f, -234.0f);
 	CameraBoom->bDoCollisionTest = false;
 
-	// 카메라 생성
 	TopDownCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
 	TopDownCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	TopDownCamera->bUsePawnControlRotation = false;
@@ -182,5 +183,35 @@ void AGridISM::HiddenGrid_Implementation()
 	{
 		LastHoveredCharacter->SetHighlight(false);
 		LastHoveredCharacter = nullptr;
+	}
+}
+
+void AGridISM::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	if (CameraBoom)
+	{
+		// 1. [핵심] 충돌 검사 끄기 (이게 켜져 있으면 땅바닥 닿자마자 줌인 당겨짐)
+		CameraBoom->bDoCollisionTest = false;
+
+		// 2. [핵심] 컨트롤러 회전 무시 (플레이어가 마우스 돌려도 카메라 안 돌아가게)
+		CameraBoom->bInheritPitch = false;
+		CameraBoom->bInheritYaw = false;
+		CameraBoom->bInheritRoll = false;
+
+		// 3. 절대 회전 사용 (액터가 돌아가도 카메라는 고정)
+		CameraBoom->SetUsingAbsoluteRotation(true);
+
+		// 4. 위치/각도 강제 주입 (계산된 값)
+		CameraBoom->TargetArmLength = 1413.0f;
+		CameraBoom->SetRelativeRotation(FRotator(-50.0f, -90.0f, 0.0f));
+		CameraBoom->SocketOffset = FVector(0.0f, 600.0f, -234.0f);
+	}
+
+	if (TopDownCamera)
+	{
+		// 카메라가 폰(컨트롤러) 회전 따라가는 것 확실히 끄기
+		TopDownCamera->bUsePawnControlRotation = false;
 	}
 }

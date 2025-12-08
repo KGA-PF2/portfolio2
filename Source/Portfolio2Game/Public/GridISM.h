@@ -30,6 +30,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<UCameraComponent> TopDownCamera;
 
+	virtual void OnConstruction(const FTransform& Transform) override;
+
 public:
 	// ───────── 그리드 설정 ─────────
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid") int32  GridWidth = 7;
@@ -94,4 +96,5 @@ private:
 	// [신규] 배틀 매니저 캐싱 (매번 찾지 않기 위해)
 	UPROPERTY()
 	TObjectPtr<ABattleManager> CachedBattleManager;
+
 };

@@ -1,5 +1,6 @@
 ﻿#include "BattleManager.h"
 #include "PlayerCharacter.h"
+#include "GridISM.h"
 #include "EnemyCharacter.h"
 #include "CharacterBase.h"
 #include "GridDataInterface.h"
@@ -21,32 +22,50 @@ void ABattleManager::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 1. 레벨 전환 연출 (모래바람)
+	// 1. 레벨 전환 연출 (기존 코드 유지)
 	UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance());
 	if (GI && GI->bIsLevelTransitioning)
 	{
 		GI->bIsLevelTransitioning = false;
-
 		if (TransitionWidgetClass)
 		{
 			CurrentTransitionWidget = CreateWidget<UUserWidget>(GetWorld(), TransitionWidgetClass);
 			if (CurrentTransitionWidget)
 			{
 				CurrentTransitionWidget->AddToViewport(9999);
-
 				FTimerHandle Handle;
 				GetWorld()->GetTimerManager().SetTimer(Handle, this, &ABattleManager::ExecuteUncover, 0.2f, false);
 			}
 		}
 	}
 
-	// 2. 그리드 인터페이스 캐싱
-	if (!GridActorRef) return;
+	// 2. 카메라 설정 (타이머 없이 순서 수정)
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	if (PC)
+	{
+		// ★ [핵심] "빙의할 때 카메라 뺏어가지 마!" 옵션 끄기
+		PC->bAutoManageActiveCameraTarget = false;
 
-	GridInterface.SetObject(GridActorRef);
-	GridInterface.SetInterface(Cast<IGridDataInterface>(GridActorRef));
+		if (GridActorRef)
+		{
+			// 이제 바로 설정해도 씹히지 않습니다.
+			PC->SetViewTargetWithBlend(GridActorRef, 0.0f);
+		}
+	}
 
-	// 3. 상단 바 생성
+	// 3. 그리드 인터페이스 캐싱 & UI 생성
+	// (GridActorRef가 없어도 UI는 나오게 하기 위해 if문 구조 변경)
+	if (GridActorRef)
+	{
+		GridInterface.SetObject(GridActorRef);
+		GridInterface.SetInterface(Cast<IGridDataInterface>(GridActorRef));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("GridActorRef is NULL! Camera & Grid Interface setup failed."));
+	}
+
+	// 4. 상단 바 생성
 	if (TopBarWidgetClass)
 	{
 		UUserWidget* TopBar = CreateWidget<UUserWidget>(GetWorld(), TopBarWidgetClass);
@@ -402,11 +421,6 @@ void ABattleManager::SpawnPlayer_Implementation()
 		UGameplayStatics::FinishSpawningActor(PlayerRef, SpawnTransform);
 
 		if (PC) PC->Possess(PlayerRef);
-
-		if (FieldCamera)
-		{
-			PC->SetViewTargetWithBlend(FieldCamera, 0.f);
-		}
 	}
 }
 
