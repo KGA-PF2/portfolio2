@@ -4,6 +4,8 @@
 #include "GameFramework/Actor.h"
 #include "GridDataInterface.h"
 #include "MouseOverGridInterface.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "Camera/CameraComponent.h"
 #include "GridISM.generated.h"
 
 class ABattleManager;
@@ -19,6 +21,14 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+
+	// [신규] 카메라 지지대 (거리, 각도 조절용)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	TObjectPtr<USpringArmComponent> CameraBoom;
+
+	// [신규] 실제 카메라
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	TObjectPtr<UCameraComponent> TopDownCamera;
 
 public:
 	// ───────── 그리드 설정 ─────────

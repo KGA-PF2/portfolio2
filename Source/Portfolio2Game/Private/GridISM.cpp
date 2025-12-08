@@ -8,6 +8,21 @@
 AGridISM::AGridISM()
 {
 	PrimaryActorTick.bCanEverTick = false;
+
+	// 스프링 암(지지대) 생성
+	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
+	CameraBoom->SetupAttachment(RootComponent);
+
+	// 지지대 설정 (원하는 뷰로 세팅)
+	CameraBoom->SetUsingAbsoluteRotation(true);
+	CameraBoom->TargetArmLength = 1200.0f;
+	CameraBoom->SetRelativeRotation(FRotator(-50.0f, 0.0f, 0.0f));
+	CameraBoom->bDoCollisionTest = false;
+
+	// 카메라 생성
+	TopDownCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
+	TopDownCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
+	TopDownCamera->bUsePawnControlRotation = false;
 }
 
 void AGridISM::BeginPlay()

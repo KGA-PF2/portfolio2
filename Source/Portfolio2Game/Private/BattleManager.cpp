@@ -149,6 +149,8 @@ void ABattleManager::SpawnCurrentRoundEnemies()
 		}
 		Loc.Z += ZOffset;
 
+		FRotator SpawnRot = FRotator(0.0f, 180.0f, 0.0f);
+
 		FTransform SpawnTransform(FRotator::ZeroRotator, Loc);
 
 		AEnemyCharacter* NewEnemy = GetWorld()->SpawnActorDeferred<AEnemyCharacter>(
