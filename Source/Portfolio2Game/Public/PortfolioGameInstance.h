@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
 #include "PlayerSkillData.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "SkillBase.h"
 #include "PortfolioGameInstance.generated.h"
 
 UCLASS()
@@ -82,4 +84,9 @@ public:
 
 	// (내부용) 매 프레임 시간 측정 함수
 	bool TickPlayTime(float DeltaTime);
+
+
+	// 특정 경로에 있는 모든 스킬 데이터를 로드하고 정렬해서 반환
+	UFUNCTION(BlueprintCallable, Category = "Game Data")
+	TArray<USkillBase*> LoadAllSkillsFromPath(FName Path = "/Game/TeamShare/TeamShare_JSH/Data/SkillData/DA");
 };

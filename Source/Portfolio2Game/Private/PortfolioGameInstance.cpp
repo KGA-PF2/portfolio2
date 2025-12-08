@@ -91,3 +91,32 @@ void UPortfolioGameInstance::ResetGameData()
 
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] Game Data Reset! Ready for New Game."));
 }
+
+TArray<USkillBase*> UPortfolioGameInstance::LoadAllSkillsFromPath(FName Path)
+{
+	TArray<USkillBase*> LoadedSkills;
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+
+	FARFilter Filter;
+	Filter.PackagePaths.Add(Path); // 검색할 폴더 경로
+	Filter.bRecursivePaths = true; // 하위 폴더가 있다면 포함
+
+	TArray<FAssetData> AssetDataList;
+	AssetRegistryModule.Get().GetAssets(Filter, AssetDataList);
+
+	for (const FAssetData& AssetData : AssetDataList)
+	{
+		USkillBase* Skill = Cast<USkillBase>(AssetData.GetAsset());
+		if (Skill)
+		{
+			LoadedSkills.Add(Skill);
+		}
+	}
+
+	LoadedSkills.Sort([](const USkillBase& A, const USkillBase& B)
+		{
+			return A.GetName() < B.GetName();
+		});
+
+	return LoadedSkills;
+}
