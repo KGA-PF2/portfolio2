@@ -641,36 +641,54 @@ void AEnemyCharacter::HandleHealthChanged(int32 NewHP, int32 NewMaxHP)
 
 void AEnemyCharacter::Die()
 {
+	// 1. 중복 사망 방지
 	if (bDead) return;
 	bDead = true;
 
 	UE_LOG(LogTemp, Warning, TEXT("%s Died!"), *GetName());
 
+	// 2. 충돌 끄기
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-	if (DeathParticle)
+	if (GetMesh())
 	{
-		UGameplayStatics::SpawnEmitterAtLocation(
-			GetWorld(),
-			DeathParticle,
-			GetActorLocation(),
-			GetActorRotation(),
-			true
-		);
+		GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 
+	// 3. 사망 이펙트
+	if (DeathParticle)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), DeathParticle, GetActorLocation(), GetActorRotation(), true);
+	}
+
+	// 4. 배틀 매니저 알림
 	if (BattleManagerRef)
 	{
 		BattleManagerRef->OnEnemyKilled(this);
 	}
 
+	// 5. 애니메이션 재생 및 섹션 제어 (핵심)
+	float SectionLength = 1.0f; // 기본값
+
 	if (StateMontage && GetMesh()->GetAnimInstance())
 	{
-		GetMesh()->GetAnimInstance()->Montage_Play(StateMontage);
-		GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("Death"), StateMontage);
+		UAnimInstance* AnimInst = GetMesh()->GetAnimInstance();
+
+		// 몽타주 재생 및 섹션 점프
+		AnimInst->Montage_Play(StateMontage);
+		AnimInst->Montage_JumpToSection(FName("Death"), StateMontage);
+
+		// ★ [핵심] 'Death'가 끝나면 다음 섹션(Death_Stay)으로 가지 말고 멈추라고 명령
+		// (다음 섹션을 NAME_None으로 설정하면 링크가 끊깁니다)
+		AnimInst->Montage_SetNextSection(FName("Death"), FName("None"), StateMontage);
+
+		// ★ [핵심] 전체 길이가 아니라 'Death' 섹션 하나의 길이만 가져오기
+		int32 SectionIndex = StateMontage->GetSectionIndex(FName("Death"));
+		SectionLength = StateMontage->GetSectionLength(SectionIndex);
 	}
 
-	float DestroyDelay = 3.0f;
+	// 6. 파괴 타이머 (Death 섹션 길이의 95% 지점)
+	float DestroyDelay = (SectionLength > 0.0f) ? (SectionLength * 0.95f) : 1.0f;
+
 	FTimerHandle DeathTimer;
 	GetWorld()->GetTimerManager().SetTimer(DeathTimer, [this]()
 		{

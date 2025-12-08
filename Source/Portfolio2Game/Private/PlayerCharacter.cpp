@@ -14,6 +14,10 @@
 APlayerCharacter::APlayerCharacter()
 {
 	bCanAct = false;
+
+	WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
+	WeaponMesh->SetupAttachment(GetMesh(), FName("WeaponSocket"));
+	WeaponMesh->SetCollisionProfileName(TEXT("NoCollision"));
 }
 
 void APlayerCharacter::StartAction()
