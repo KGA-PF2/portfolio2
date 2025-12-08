@@ -91,13 +91,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill")
 	TArray<FPlayerSkillData> OwnedSkills;
 
+	// 무기 메쉬를 담을 컴포넌트
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	TObjectPtr<UStaticMeshComponent> WeaponMesh;
+
 private:
 	bool bInputLocked = false;  // 입력 잠금 여부
 	FTimerHandle InputLockTimerHandle;
 
 	void SetInputEnabled(bool bEnabled);
 
-	
 
 protected:
 	// ❌ (제거) BeginPlay() (부모 클래스(CharacterBase)가 BattleManager를 찾음)
