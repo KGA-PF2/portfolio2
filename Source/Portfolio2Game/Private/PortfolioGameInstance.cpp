@@ -1,4 +1,5 @@
 ﻿#include "PortfolioGameInstance.h"
+#include "Kismet/GameplayStatics.h"
 
 void UPortfolioGameInstance::Init()
 {
@@ -10,8 +11,16 @@ void UPortfolioGameInstance::Init()
 }
 bool UPortfolioGameInstance::TickPlayTime(float DeltaTime)
 {
+	UWorld* World = GetWorld();
+
+	if (World && UGameplayStatics::IsGamePaused(World))
+	{
+		return true;
+	}
+
 	TotalPlayTime += DeltaTime;
-	return true; // true를 반환해야 타이머가 계속 반복됨
+
+	return true;
 }
 
 FString UPortfolioGameInstance::GetCurrentStageDisplayName()

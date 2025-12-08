@@ -352,7 +352,7 @@ void ACharacterBase::SetHighlight(bool bEnable)
 	{
 		GetMesh()->SetRenderCustomDepth(bEnable);
 		// (선택) 색상을 구분하고 싶다면 Stencil Value를 변경
-		// GetMesh()->SetCustomDepthStencilValue(bEnable ? 1 : 0); 
+		GetMesh()->SetCustomDepthStencilValue(bEnable ? 1 : 0); 
 	}
 }
 
