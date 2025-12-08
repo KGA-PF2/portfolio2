@@ -346,6 +346,16 @@ int32 ACharacterBase::GetGridIndex() const
 	return GridIndex;
 }
 
+void ACharacterBase::SetHighlight(bool bEnable)
+{
+	if (GetMesh())
+	{
+		GetMesh()->SetRenderCustomDepth(bEnable);
+		// (선택) 색상을 구분하고 싶다면 Stencil Value를 변경
+		GetMesh()->SetCustomDepthStencilValue(bEnable ? 1 : 0); 
+	}
+}
+
 // ───────── 스탯/데미지 (오류 수정) ─────────
 
 /**

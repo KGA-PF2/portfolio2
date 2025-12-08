@@ -174,4 +174,15 @@ public:
     UFUNCTION(BlueprintImplementableEvent, Category = "UI")
     void BP_UpdateOrderIcon(UTexture2D* MainIcon, UTexture2D* SubIcon);
 
+    // 마우스 오버 시 보여줄 스킬 정보 위젯 (카드)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+    TObjectPtr<UWidgetComponent> SkillCardWidget;
+
+    // CharacterBase의 함수 오버라이드
+    virtual void SetHighlight(bool bEnable) override;
+
+protected:
+    // 위젯에 스킬 정보를 채워넣으라고 BP에 요청하는 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "UI")
+    void BP_UpdateSkillCardInfo(USkillBase* SkillInfo);
 };

@@ -6,16 +6,22 @@
 
 AEnemyCharacter::AEnemyCharacter()
 {
-	// 위젯 컴포넌트 생성
+	// 순서 위젯 컴포넌트 생성
 	OrderWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OrderWidgetComponent"));
 	OrderWidgetComponent->SetupAttachment(RootComponent);
-
-	// 설정: 월드 공간(캐릭터 옆에 둥둥), 원하는 크기로 그리기
 	OrderWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
 	OrderWidgetComponent->SetDrawAtDesiredSize(true);
-
-	// 위치: 캐릭터 오른쪽 위 (Y+, Z+)
 	OrderWidgetComponent->SetRelativeLocation(FVector(0.0f, 60.0f, 100.0f));
+
+	SkillCardWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("SkillCardWidget"));
+	SkillCardWidget->SetupAttachment(RootComponent);
+	SkillCardWidget->SetWidgetSpace(EWidgetSpace::Screen); // 화면에 2D로 표시
+	SkillCardWidget->SetDrawAtDesiredSize(true);
+
+	// 위치 조정 (캐릭터 오른쪽 쯤)
+	SkillCardWidget->SetRelativeLocation(FVector(0.0f, 100.0f, 100.0f));
+	SkillCardWidget->SetVisibility(false); // 기본은 숨김
+
 }
 
 void AEnemyCharacter::BeginPlay()
@@ -746,4 +752,32 @@ void AEnemyCharacter::EndAction()
 	HideActionOrder();
 
 	Super::EndAction(); // 부모(CharacterBase)의 턴 종료 로직 실행
+}
+
+void AEnemyCharacter::SetHighlight(bool bEnable)
+{
+	// 1. 부모 함수 호출 (외곽선 처리)
+	Super::SetHighlight(bEnable);
+
+	// 2. 스킬 카드 표시/숨김 로직
+	if (bEnable)
+	{
+		// 마우스가 올라왔고, 예약된 스킬(ReservedSkill)이 있다면?
+		if (SkillCardWidget && ReservedSkill)
+		{
+			// BP에게 위젯 내용을 채우라고 시킴
+			BP_UpdateSkillCardInfo(ReservedSkill);
+
+			// 보이게 설정 (스르륵 애니메이션은 위젯 BP에서 Construct나 ShowAnim으로 처리 추천)
+			SkillCardWidget->SetVisibility(true);
+		}
+	}
+	else
+	{
+		// 마우스가 나가면 숨김
+		if (SkillCardWidget)
+		{
+			SkillCardWidget->SetVisibility(false);
+		}
+	}
 }

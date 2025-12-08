@@ -261,6 +261,9 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Grid")
 	int32 GetGridIndex() const;
 
+	// 하이라이트(윤곽선) 켜기/끄기 함수
+	virtual void SetHighlight(bool bEnable);
+
 	// ───────── 스탯/데미지 ─────────
 public:
 	/** EnemyCharacter가 호출할 수 있도록 ApplyDamage를 다시 추가합니다. */

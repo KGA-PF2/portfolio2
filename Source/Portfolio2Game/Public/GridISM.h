@@ -3,10 +3,14 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GridDataInterface.h"
+#include "MouseOverGridInterface.h"
 #include "GridISM.generated.h"
 
+class ABattleManager;
+class ACharacterBase;
+
 UCLASS()
-class PORTFOLIO2GAME_API AGridISM : public AActor, public IGridDataInterface
+class PORTFOLIO2GAME_API AGridISM : public AActor, public IGridDataInterface, public IMouseOverGridInterface
 {
 	GENERATED_BODY()
 
@@ -56,6 +60,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Grid|UI")
 	void UpdateTileHPBar(int32 Index, bool bShow, int32 CurrentHP = 0, int32 MaxHP = 0);
 
+	virtual void VisibleGrid_Implementation(FVector GridLocation, FVector GridSize) override;
+
+	virtual void HiddenGrid_Implementation() override;
+
 	// 인터페이스 구현
 	virtual int32   GetGridWidth_Implementation() const override { return GridWidth; }
 	virtual int32   GetGridHeight_Implementation() const override { return GridHeight; }
@@ -64,4 +72,16 @@ public:
 	virtual FVector GetGridLocationOffset_Implementation() const override { return GridLocationOffset; }
 	virtual FIntPoint GetGridCoordFromIndex_Implementation(int32 Index) override;
 	virtual int32     GetGridIndexFromCoord_Implementation(FIntPoint Coord) override;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|Cursor")
+	TObjectPtr<AActor> GridCursorActor;
+
+private:
+	// [신규] 직전에 하이라이트 했던 캐릭터 기억용
+	UPROPERTY()
+	TObjectPtr<ACharacterBase> LastHoveredCharacter;
+
+	// [신규] 배틀 매니저 캐싱 (매번 찾지 않기 위해)
+	UPROPERTY()
+	TObjectPtr<ABattleManager> CachedBattleManager;
 };

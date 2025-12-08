@@ -1,5 +1,8 @@
 ﻿#include "GridISM.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "BattleManager.h"
+#include "CharacterBase.h"
 #include "Components/WidgetComponent.h"
 
 AGridISM::AGridISM()
@@ -69,6 +72,9 @@ void AGridISM::BeginPlay()
 			}
 		}
 	}
+
+	CachedBattleManager = Cast<ABattleManager>(
+		UGameplayStatics::GetActorOfClass(GetWorld(), ABattleManager::StaticClass()));
 }
 
 FIntPoint AGridISM::GetGridCoordFromIndex_Implementation(int32 Index)
@@ -111,5 +117,55 @@ void AGridISM::UpdateTileHPBar(int32 Index, bool bShow, int32 CurrentHP, int32 M
 	else
 	{
 		TargetBar->SetActorHiddenInGame(true);
+	}
+}
+
+// 마우스가 그리드 칸 위에 있을 때 (매 프레임 호출될 수 있음)
+void AGridISM::VisibleGrid_Implementation(FVector GridLocation, FVector GridSize)
+{
+	// 2. 해당 위치의 캐릭터 찾기
+	if (CachedBattleManager)
+	{
+		FVector LocalPos = GetActorTransform().InverseTransformPosition(GridLocation);
+		LocalPos -= GridLocationOffset;
+
+		// 그리드 인덱스 계산
+		int32 X = FMath::RoundToInt(LocalPos.X / GridSizeX);
+		int32 Y = FMath::RoundToInt(LocalPos.Y / GridSizeY);
+
+		// [디버그 2] 계산된 좌표 확인
+		UE_LOG(LogTemp, Warning, TEXT("Hover Coord: (%d, %d)"), X, Y);
+
+		// 해당 칸에 있는 캐릭터 찾기
+		ACharacterBase* FoundChar = CachedBattleManager->GetCharacterAt(FIntPoint(X, Y));
+
+		// 상태 갱신 (대상이 바뀌었을 때만)
+		if (FoundChar != LastHoveredCharacter)
+		{
+			// 이전 캐릭터 끄기
+			if (IsValid(LastHoveredCharacter))
+			{
+				LastHoveredCharacter->SetHighlight(false);
+			}
+
+			// 새 캐릭터 켜기
+			if (FoundChar)
+			{
+				FoundChar->SetHighlight(true);
+			}
+
+			// 현재 캐릭터 기억
+			LastHoveredCharacter = FoundChar;
+		}
+	}
+}
+
+void AGridISM::HiddenGrid_Implementation()
+{
+	// 하이라이트 끄기
+	if (LastHoveredCharacter)
+	{
+		LastHoveredCharacter->SetHighlight(false);
+		LastHoveredCharacter = nullptr;
 	}
 }
