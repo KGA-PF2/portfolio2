@@ -273,10 +273,4 @@ public:
 	/** BP에서 사망 처리를 위한 이벤트 */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Status")
 	void OnDeath();
-
-	UFUNCTION(BlueprintCallable, Category = "Anim")
-	void OnAnimNotify_TurnStart();
-
-	UFUNCTION(BlueprintCallable, Category = "Anim")
-	void OnAnimNotify_TurnEnd();
 };

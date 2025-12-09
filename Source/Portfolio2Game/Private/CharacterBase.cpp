@@ -175,6 +175,7 @@ void ACharacterBase::RequestRotation(EGridDirection NewDir, UAnimMontage* Montag
 	bCanAct = false;
 	PendingRotationDirection = NewDir;
 	FacingDirection = NewDir;
+	bIsRotating = true;
 	OnBusyStateChanged.Broadcast(true);
 
 	// 목표 각도 계산해두기
@@ -202,30 +203,6 @@ void ACharacterBase::RequestRotation(EGridDirection NewDir, UAnimMontage* Montag
 	}
 }
 
-void ACharacterBase::OnAnimNotify_TurnStart()
-{
-	if (bIsRotating)
-	{
-		bCanRotate = true;
-		CurrentRotationTime = 0.0f;
-		// ★ 회전 구간 길이 설정 (예: 0.3초 동안 휙 돈다)
-		// 몽타주에서 노티파이 간격을 잴 수 없으므로 하드코딩하거나 파라미터로 받아야 함.
-		// 여기서는 0.3초(빠름)로 설정합니다.
-		ActualRotationDuration = 0.3f;
-	}
-}
-
-void ACharacterBase::OnAnimNotify_TurnEnd()
-{
-	// 회전 강제 완료
-	if (bIsRotating)
-	{
-		bCanRotate = false;
-		// 혹시 덜 돌았으면 최종 각도로 고정
-		SetActorRotation(RotationTargetQuat);
-	}
-}
-
 void ACharacterBase::FinalizeRotation(UAnimMontage* Montage, bool bInterrupted)
 {
 	bIsRotationWindowActive = false;
@@ -235,6 +212,8 @@ void ACharacterBase::FinalizeRotation(UAnimMontage* Montage, bool bInterrupted)
 		GetMesh()->GetAnimInstance()->SetRootMotionMode(ERootMotionMode::RootMotionFromMontagesOnly);
 	}
 	EndAction();
+
+	bIsRotating = false;
 }
 
 void ACharacterBase::RotateToDirection(EGridDirection NewDir, bool bConsumeTurn)
@@ -405,8 +384,8 @@ void ACharacterBase::Tick(float DeltaTime)
 				GetMesh()->GetAnimInstance()->Montage_Stop(0.1f, RunMontage);
 			}
 
-			// C. 대기 시간 계산 (기본 0.25초: 숨 고를 시간 확보)
-			float WaitTime = 0.25f;
+			// C. 대기 시간 계산
+			float WaitTime = 0.1f;
 
 			// D. 정지 몽타주(CurrentStopMontage) 재생
 			if (CurrentStopMontage && GetMesh()->GetAnimInstance())
@@ -421,7 +400,6 @@ void ACharacterBase::Tick(float DeltaTime)
 			}
 
 			// E. 계산된 시간만큼 기다렸다가 턴 종료
-			// (정지 모션이 없어도 최소 0.25초는 대기하므로 적이 급발진하지 않음)
 			GetWorld()->GetTimerManager().SetTimer(
 				StopAnimTimerHandle,
 				this,
@@ -463,15 +441,16 @@ void ACharacterBase::OnStopAnimEnded()
 void ACharacterBase::BeginRotationWindow(float Duration)
 {
 	bIsRotationWindowActive = true;
+	if (!bIsRotating){ return; }
 
 	// PlayRate가 2.0이면 실제 시간은 절반임.
 	// NotifyState의 Duration은 '에셋 기준 시간'이므로 PlayRate로 나눠줘야 실제 시간이 됨.
-	float CurrentPlayRate = 1.0f;
+	float CurrentPlayRate = 2.0f;
 	if (GetMesh()->GetAnimInstance() && GetMesh()->GetAnimInstance()->GetCurrentActiveMontage())
 	{
 		CurrentPlayRate = GetMesh()->GetAnimInstance()->GetCurveValue(TEXT("PlayRate")); // 만약 커브로 제어 안하면 아래 사용
 		// 혹은 간단히:
-		CurrentPlayRate = 2.0f; // 아까 2.0으로 틀었으니까 (하드코딩 싫으면 변수로 저장해두세요)
+		CurrentPlayRate =2.0f; // 아까 2.0으로 틀었으니까 (하드코딩 싫으면 변수로 저장해두세요)
 	}
 
 	RotationWindowDuration = Duration / CurrentPlayRate;
@@ -481,7 +460,7 @@ void ACharacterBase::BeginRotationWindow(float Duration)
 // 3. [신규] 노티파이가 호출: 매 프레임 회전
 void ACharacterBase::TickRotationWindow(float DeltaTime)
 {
-	if (!bIsRotationWindowActive) return;
+	if (!bIsRotating && !bIsRotationWindowActive) return;
 
 	RotationWindowElapsed += DeltaTime;
 

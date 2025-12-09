@@ -72,6 +72,9 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Move")
     TObjectPtr<UAnimMontage> WalkStopMontage;
 
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Turn")
+    TObjectPtr<UAnimMontage> TurnMontage;
+
     // ── 스킬 A ──
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim|Skill_A")
     TObjectPtr<UAnimMontage> Montage_Atk_A;      // 공격

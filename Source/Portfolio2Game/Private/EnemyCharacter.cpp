@@ -41,7 +41,6 @@ void AEnemyCharacter::BeginPlay()
 		OnHealthChanged.AddDynamic(this, &AEnemyCharacter::HandleHealthChanged);
 	}
 
-	//1203추가
 	if (GetMesh() && GetMesh()->GetAnimInstance())
 	{
 		// A. 별도 스폰 몽타주가 있다면 (Super 몹 등)
@@ -56,6 +55,8 @@ void AEnemyCharacter::BeginPlay()
 			GetMesh()->GetAnimInstance()->Montage_JumpToSection(FName("Default"), StateMontage);
 		}
 	}
+
+	RotateToDirection(EGridDirection::Left, false);
 }
 
 UAnimMontage* AEnemyCharacter::GetAttackMontageForSkill(USkillBase* SkillDef)
@@ -416,7 +417,7 @@ void AEnemyCharacter::Action_ReserveRandomSkill()
 
 void AEnemyCharacter::Action_RotateToPlayer()
 {
-	RequestRotation(PendingFaceDir, nullptr);
+	RequestRotation(PendingFaceDir, TurnMontage);
 	bJustAttacked = false;
 }
 
