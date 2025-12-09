@@ -1,6 +1,7 @@
 ﻿#include "EnemyCharacter.h"
 #include "PlayerCharacter.h"
 #include "BattleManager.h"
+#include "Components/Widget.h"
 #include "Components/CapsuleComponent.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -783,10 +784,22 @@ void AEnemyCharacter::SetHighlight(bool bEnable)
 		// 마우스가 올라왔고, 예약된 스킬(ReservedSkill)이 있다면?
 		if (SkillCardWidget && ReservedSkill)
 		{
-			// BP에게 위젯 내용을 채우라고 시킴
 			BP_UpdateSkillCardInfo(ReservedSkill);
 
-			// 보이게 설정 (스르륵 애니메이션은 위젯 BP에서 Construct나 ShowAnim으로 처리 추천)
+			// 2. ★ [핵심] 위젯 안에 있는 "RootScaleBox"를 찾아서 크기 강제 조절
+			UUserWidget* WidgetObj = Cast<UUserWidget>(SkillCardWidget->GetUserWidgetObject());
+			if (WidgetObj)
+			{
+				// 아까 WBP에서 지어준 이름("RootScaleBox")으로 찾습니다.
+				UWidget* TargetBox = WidgetObj->GetWidgetFromName(TEXT("RootScaleBox"));
+				if (TargetBox)
+				{
+					// Render Scale을 조절하면 Screen 모드에서도 작아집니다.
+					TargetBox->SetRenderScale(FVector2D(SkillCardScale, SkillCardScale));
+				}
+			}
+
+			// 3. 보이게 하기
 			SkillCardWidget->SetVisibility(true);
 		}
 	}
