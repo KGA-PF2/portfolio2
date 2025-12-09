@@ -173,9 +173,9 @@ TArray<FEnforceRewardInfo> AEnforceManager::GetRandomRewards()
         FEnforceRewardInfo Info;
         int32 Chance = FMath::RandRange(1, 100);
 
-        // [옵션 1] 신규 스킬 (30%)
+        // [옵션 1] 신규 스킬 (40%)
         // 단, 스킬 풀에 남은 게 있어야 함
-        if (Chance <= 30 && TempSkills.Num() > 0)
+        if (Chance <= 40 && TempSkills.Num() > 0)
         {
             Info.Type = ERewardType::NewSkill;
 
@@ -192,7 +192,6 @@ TArray<FEnforceRewardInfo> AEnforceManager::GetRandomRewards()
             // 랜덤 뽑기 & ★목록에서 제거 (중복 방지)
             int32 RandIdx = FMath::RandRange(0, TempEnforce.Num() - 1);
             Info.EnforceData = TempEnforce[RandIdx];
-            TempEnforce.RemoveAt(RandIdx);
         }
         // [예외] 강화 카드도 다 떨어졌으면? -> 스킬에서 다시 시도
         else if (TempSkills.Num() > 0)
