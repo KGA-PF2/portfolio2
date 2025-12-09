@@ -185,4 +185,7 @@ protected:
     // 위젯에 스킬 정보를 채워넣으라고 BP에 요청하는 이벤트
     UFUNCTION(BlueprintImplementableEvent, Category = "UI")
     void BP_UpdateSkillCardInfo(USkillBase* SkillInfo);
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+    float SkillCardScale = 0.6f; // 원하는 크기로 기본값 설정
 };
