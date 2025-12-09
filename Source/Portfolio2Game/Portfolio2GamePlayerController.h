@@ -32,7 +32,6 @@ protected:
 
 	virtual void SetupInputComponent() override;
 
-	// (유지) 기본 매핑 컨텍스트를 추가하기 위해 BeginPlay는 남겨둡니다.
 	virtual void BeginPlay() override;
 
 private:

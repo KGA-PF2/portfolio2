@@ -39,16 +39,14 @@ void ABattleManager::BeginPlay()
 		}
 	}
 
-	// 2. 카메라 설정 (타이머 없이 순서 수정)
+	// 2. 카메라 설정
 	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
 	if (PC)
 	{
-		// ★ [핵심] "빙의할 때 카메라 뺏어가지 마!" 옵션 끄기
 		PC->bAutoManageActiveCameraTarget = false;
 
 		if (GridActorRef)
 		{
-			// 이제 바로 설정해도 씹히지 않습니다.
 			PC->SetViewTargetWithBlend(GridActorRef, 0.0f);
 		}
 	}

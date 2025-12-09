@@ -12,18 +12,61 @@ AGridISM::AGridISM()
 	USceneComponent* DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
 	RootComponent = DefaultSceneRoot;
 
+	// ───────── [1] 메인 카메라 (Main) ─────────
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
+
 	CameraBoom->SetUsingAbsoluteRotation(true);
-
-	CameraBoom->SetRelativeRotation(FRotator(-50.0f, -90.0f, 0.0f));
-	CameraBoom->TargetArmLength = 1413.0f;
-	CameraBoom->SocketOffset = FVector(0.0f, 600.0f, -234.0f);
 	CameraBoom->bDoCollisionTest = false;
+	CameraBoom->bInheritPitch = false;
+	CameraBoom->bInheritYaw = false;
+	CameraBoom->bInheritRoll = false;
 
-	TopDownCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
-	TopDownCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
-	TopDownCamera->bUsePawnControlRotation = false;
+	CameraBoom->TargetArmLength = 1413.0f;
+	CameraBoom->SetRelativeRotation(FRotator(-50.0f, -90.0f, 0.0f));
+	CameraBoom->SocketOffset = FVector(0.0f, 600.0f, -234.0f);
+
+	BattleCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("BattleCamera"));
+	BattleCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
+	BattleCamera->bUsePawnControlRotation = false;
+
+
+	// ───────── [2] Sine 카메라 (Sine) ─────────
+	SineCameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("SineCameraBoom"));
+	SineCameraBoom->SetupAttachment(RootComponent);
+
+	SineCameraBoom->SetUsingAbsoluteRotation(true);
+	SineCameraBoom->bDoCollisionTest = false;
+	SineCameraBoom->bInheritPitch = false;
+	SineCameraBoom->bInheritYaw = false;
+	SineCameraBoom->bInheritRoll = false;
+
+	SineCameraBoom->TargetArmLength = 1600.0f;
+	SineCameraBoom->SetRelativeRotation(FRotator(-40.0f, -90.0f, 0.0f));
+	SineCameraBoom->SocketOffset = FVector(0.0f, 600.0f, 0.0f);
+
+	SineCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("SineCamera"));
+	SineCamera->SetupAttachment(SineCameraBoom, USpringArmComponent::SocketName);
+	SineCamera->bUsePawnControlRotation = false;
+
+
+	// ───────── [3] Top 카메라 (Top) ─────────
+	TopCameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("TopCameraBoom"));
+	TopCameraBoom->SetupAttachment(RootComponent);
+
+	TopCameraBoom->SetUsingAbsoluteRotation(true);
+	TopCameraBoom->bDoCollisionTest = false;
+	TopCameraBoom->bInheritPitch = false;
+	TopCameraBoom->bInheritYaw = false;
+	TopCameraBoom->bInheritRoll = false;
+
+	TopCameraBoom->TargetArmLength = 1300.0f;
+	TopCameraBoom->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f));
+	TopCameraBoom->SocketOffset = FVector(481.0f, 314.67f, 600.0f);
+
+	TopCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopCamera"));
+	TopCamera->SetupAttachment(TopCameraBoom, USpringArmComponent::SocketName);
+	TopCamera->bUsePawnControlRotation = false;
 }
 
 void AGridISM::BeginPlay()
@@ -88,6 +131,8 @@ void AGridISM::BeginPlay()
 			}
 		}
 	}
+
+	ActivateBattleCamera();
 
 	CachedBattleManager = Cast<ABattleManager>(
 		UGameplayStatics::GetActorOfClass(GetWorld(), ABattleManager::StaticClass()));
@@ -192,26 +237,41 @@ void AGridISM::OnConstruction(const FTransform& Transform)
 
 	if (CameraBoom)
 	{
-		// 1. [핵심] 충돌 검사 끄기 (이게 켜져 있으면 땅바닥 닿자마자 줌인 당겨짐)
 		CameraBoom->bDoCollisionTest = false;
-
-		// 2. [핵심] 컨트롤러 회전 무시 (플레이어가 마우스 돌려도 카메라 안 돌아가게)
-		CameraBoom->bInheritPitch = false;
-		CameraBoom->bInheritYaw = false;
-		CameraBoom->bInheritRoll = false;
-
-		// 3. 절대 회전 사용 (액터가 돌아가도 카메라는 고정)
 		CameraBoom->SetUsingAbsoluteRotation(true);
-
-		// 4. 위치/각도 강제 주입 (계산된 값)
-		CameraBoom->TargetArmLength = 1413.0f;
-		CameraBoom->SetRelativeRotation(FRotator(-50.0f, -90.0f, 0.0f));
-		CameraBoom->SocketOffset = FVector(0.0f, 600.0f, -234.0f);
 	}
 
-	if (TopDownCamera)
+	if (SineCameraBoom)
 	{
-		// 카메라가 폰(컨트롤러) 회전 따라가는 것 확실히 끄기
-		TopDownCamera->bUsePawnControlRotation = false;
+		SineCameraBoom->bDoCollisionTest = false;
+		SineCameraBoom->SetUsingAbsoluteRotation(true);
+	}
+
+	if (TopCameraBoom)
+	{
+		TopCameraBoom->bDoCollisionTest = false;
+		TopCameraBoom->SetUsingAbsoluteRotation(true);
+	}
+}
+
+// 쿼터뷰(Battle) 활성화 함수
+void AGridISM::ActivateBattleCamera()
+{
+	if (BattleCamera && TopCamera && SineCamera)
+	{
+		BattleCamera->SetActive(true);
+		TopCamera->SetActive(false);
+		SineCamera->SetActive(false);
+	}
+}
+
+// 탑뷰(Top) 활성화 함수
+void AGridISM::ActivateTopCamera()
+{
+	if (BattleCamera && TopCamera && SineCamera)
+	{
+		TopCamera->SetActive(true);
+		BattleCamera->SetActive(false);
+		SineCamera->SetActive(false);
 	}
 }

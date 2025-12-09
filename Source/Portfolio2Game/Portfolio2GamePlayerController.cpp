@@ -24,16 +24,13 @@ APortfolio2GamePlayerController::APortfolio2GamePlayerController()
 
 void APortfolio2GamePlayerController::BeginPlay()
 {
-	// Call the base class  
 	Super::BeginPlay();
 }
 
 void APortfolio2GamePlayerController::SetupInputComponent()
 {
-	// set up gameplay key bindings
 	Super::SetupInputComponent();
 
-	// (유지) Enhanced Input Component가 있는지 확인
 	if (Cast<UEnhancedInputComponent>(InputComponent))
 	{
 	}
@@ -47,7 +44,6 @@ void APortfolio2GamePlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 
-	// 1. 마우스 아래에 있는 물체 감지 (Raycast)
 	FHitResult HitResult;
 	bool bHit = GetHitResultUnderCursor(ECC_Visibility, false, HitResult);
 
@@ -62,19 +58,13 @@ void APortfolio2GamePlayerController::PlayerTick(float DeltaTime)
 			TScriptInterface<IMouseOverGridInterface> CurrentGrid;
 			CurrentGrid.SetObject(HitActor);
 			CurrentGrid.SetInterface(Cast<IMouseOverGridInterface>(HitActor));
-
-			// ★ 함수 호출! (여기서 GridISM의 VisibleGrid가 실행됨)
-			// GridSize는 딱히 필요 없다면 ZeroVector나 임의값 전달
 			IMouseOverGridInterface::Execute_VisibleGrid(HitActor, HitResult.Location, FVector::ZeroVector);
 
-			// 기억해둠 (나중에 나갔을 때 끄려고)
 			LastHoveredGrid = CurrentGrid;
 			return;
 		}
 	}
 
-	// 3. 마우스가 허공에 있거나, 그리드가 아닌 다른 곳으로 갔다면?
-	// 아까 기억해둔 그리드가 있으면 'HiddenGrid' 호출해서 끄기
 	if (LastHoveredGrid)
 	{
 		IMouseOverGridInterface::Execute_HiddenGrid(LastHoveredGrid.GetObject());

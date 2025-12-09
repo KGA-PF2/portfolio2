@@ -22,13 +22,25 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-	// [신규] 카메라 지지대 (거리, 각도 조절용)
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	// 메인카메라
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera|Battle")
 	TObjectPtr<USpringArmComponent> CameraBoom;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera|Battle")
+	TObjectPtr<UCameraComponent> BattleCamera;
 
-	// [신규] 실제 카메라
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
-	TObjectPtr<UCameraComponent> TopDownCamera;
+	// 전투용 탑뷰 카메라 (Top)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera|Top")
+	TObjectPtr<USpringArmComponent> TopCameraBoom;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera|Top")
+	TObjectPtr<UCameraComponent> TopCamera;
+
+	// 오프닝용 카메라 (Sine)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera|Sine")
+	TObjectPtr<USpringArmComponent> SineCameraBoom;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera|Sine")
+	TObjectPtr<UCameraComponent> SineCamera;
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 
@@ -59,12 +71,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
 	float HPBarWidthRatio = 0.85f;
 
-	// ★ [신규] HP바 세로 높이 (기본 30.0)
+	// HP바 세로 높이 (기본 30.0)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
 	float HPBarHeight = 30.0f;
 
-	// [신규] 위의 기본 계산 결과에 "추가로" 더할 XYZ 값 (미세 조정용)
-	// 기본값 (0,0,0)이면 기존 위치와 완전히 동일합니다.
+	//  위의 기본 계산 결과에 "추가로" 더할 XYZ 값
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|UI")
 	FVector HPBarAdditionalOffset = FVector::ZeroVector;
 
@@ -87,6 +98,14 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grid|Cursor")
 	TObjectPtr<AActor> GridCursorActor;
+
+
+	// 블루프린트에서 호출할 카메라 전환 함수
+	UFUNCTION(BlueprintCallable, Category = "Camera|Control")
+	void ActivateBattleCamera();
+
+	UFUNCTION(BlueprintCallable, Category = "Camera|Control")
+	void ActivateTopCamera();
 
 private:
 	// [신규] 직전에 하이라이트 했던 캐릭터 기억용
