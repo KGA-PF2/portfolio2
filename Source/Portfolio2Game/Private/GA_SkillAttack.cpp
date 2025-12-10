@@ -6,6 +6,7 @@
 #include "EnemyCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
+#include "NiagaraComponent.h"
 #include "GameFramework/Character.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
@@ -169,6 +170,11 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 		break;
 	}
 
+	float EffectLifeTime = 2.0f;
+
+	// ★ [설정] 이펙트 크기 (0.5f = 절반 크기)
+	FVector EffectScale = FVector(0.5f);
+
 	for (const FIntPoint& Point : SkillInfo->AttackPattern)
 	{
 		// ───────── [좌표 회전 계산] ─────────
@@ -204,18 +210,29 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 		// 1순위: 나이아가라가 있으면 나이아가라 재생
 		if (SkillInfo->NiagaraEffect)
 		{
-			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			UNiagaraComponent* NiagComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 				GetWorld(),
 				SkillInfo->NiagaraEffect,
 				TargetPos,
 				EffectRotation,
-				FVector(0.5f), 
-				true,          
-				true,          
-				ENCPoolMethod::None,
-				true
+				EffectScale, // 크기 조절
+				true, true, ENCPoolMethod::None, true
 			);
+			// ★ [핵심] 타이머를 걸어서 강제로 죽여버림 (Infinite 루프 방지)
+			if (NiagComp)
+			{
+				FTimerHandle DestroyHandle;
+				GetWorld()->GetTimerManager().SetTimer(DestroyHandle, [NiagComp]()
+					{
+						if (IsValid(NiagComp))
+						{
+							NiagComp->Deactivate(); // 재생 중지
+							NiagComp->DestroyComponent(); // 컴포넌트 삭제
+						}
+					}, EffectLifeTime, false);
+			}
 		}
+
 		// 2순위: 나이아가라가 없고 Cascade만 있으면 Cascade 재생
 		else if (SkillInfo->TileEffect)
 		{
