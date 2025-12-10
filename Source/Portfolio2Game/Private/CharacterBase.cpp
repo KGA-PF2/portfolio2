@@ -303,6 +303,21 @@ void ACharacterBase::OnHealthChanged_Wrapper(int32 CurrentHP, int32 MaxHP)
 			Grid->UpdateTileHPBar(GridIndex, bShow, CurrentHP, MaxHP);
 		}
 	}
+
+	// ==========================================================
+	// 2. ★ [신규 로직] 사망 체크 및 OnDeath 호출 (최종 처리) ★
+	// ==========================================================
+
+	// 체력이 0 이하이고, 아직 사망 처리되지 않았다면 (bDead == false)
+	if (CurrentHP <= 0 && !bDead)
+	{
+		// 1. 중복 사망 처리 방지 플래그 설정
+		bDead = true;
+
+		// 2. BlueprintImplementableEvent 호출
+		// PlayerCharacter BP에서 Game Over 로직을 수행합니다.
+		OnDeath();
+	}
 }
 
 void ACharacterBase::OnHealthAttributeChanged(const FOnAttributeChangeData& Data)
