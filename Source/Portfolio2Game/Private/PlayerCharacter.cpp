@@ -535,6 +535,32 @@ void APlayerCharacter::Input_Pause()
 	}
 }
 
+void APlayerCharacter::Test_InstantlyDie()
+{
+	if (bDead)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Player is already dead, ignoring Test_InstantlyDie."));
+		return;
+	}
+
+	// 1. AbilitySystem이 유효한지 확인 (ACharacterBase에서 상속)
+	if (AbilitySystem)
+	{
+		// 2. ★ 핵심: AbilitySystemComponent를 통해 HP 속성 값을 0으로 설정 ★
+		// GetHPAttribute()는 UBaseAttributeSet에 정의된 static 함수입니다.
+		AbilitySystem->SetNumericAttributeBase(UBaseAttributeSet::GetHPAttribute(), 0.0f);
+
+		// SetNumericAttributeBase()는 변경 델리게이트를 발생시키므로
+		// OnHealthChanged_Wrapper -> OnDeath() 로직이 실행됩니다.
+
+		UE_LOG(LogTemp, Log, TEXT("Player HP set to 0.0f via ASC. Triggering Death Logic."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("AbilitySystemComponent is null! Cannot test death."));
+	}
+}
+
 void APlayerCharacter::ResumeGame()
 {
 	// 1. 게임 재개
