@@ -235,4 +235,7 @@ protected:
 
 	// [신규] 일시정지 토글 함수
 	void Input_Pause();
+
+	UFUNCTION(Exec, BlueprintCallable, Category = "Test")
+	void Test_InstantlyDie();
 };
