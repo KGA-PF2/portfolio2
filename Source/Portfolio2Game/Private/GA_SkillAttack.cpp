@@ -208,7 +208,12 @@ void UGA_SkillAttack::ApplySkillEffects(ACharacterBase* Caster, USkillBase* Skil
 				GetWorld(),
 				SkillInfo->NiagaraEffect,
 				TargetPos,
-				EffectRotation // ZeroRotator -> EffectRotation 변경
+				EffectRotation,
+				FVector(0.5f), 
+				true,          
+				true,          
+				ENCPoolMethod::None,
+				true
 			);
 		}
 		// 2순위: 나이아가라가 없고 Cascade만 있으면 Cascade 재생
