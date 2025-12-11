@@ -6,6 +6,8 @@
 #include "GridDataInterface.h"
 #include "TimerManager.h"
 #include "PortfolioGameInstance.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include <Misc/OutputDeviceNull.h>
@@ -45,8 +47,14 @@ void ABattleManager::BeginPlay()
 	{
 		PC->bAutoManageActiveCameraTarget = false;
 
-		if (GridActorRef)
+		if (IntroCameraActor)
 		{
+			// 시네마틱 카메라 시점으로 시작
+			PC->SetViewTarget(IntroCameraActor);
+		}
+		else if (GridActorRef)
+		{
+			// 없으면 그냥 배틀 카메라
 			PC->SetViewTargetWithBlend(GridActorRef, 0.0f);
 		}
 	}
@@ -115,13 +123,108 @@ void ABattleManager::BeginBattle()
 	TurnsSinceSingleEnemy = 0;
 
 	SpawnPlayer();
-	SpawnCurrentRoundEnemies(); // (신규 함수 사용)
+	//SpawnCurrentRoundEnemies();
 
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+
+
+
+	if (PC && GridActorRef && IntroCameraActor && BattleStartWidgetClass)
+	{
+		StartFOV = 90.0;
+		TargetFOV = 90.0f;
+
+		// 1) 출발지(CineCamera)의 현재 FOV 가져오기
+		UCameraComponent* StartCam = IntroCameraActor->FindComponentByClass<UCameraComponent>();
+		if (StartCam)
+		{
+			StartFOV = StartCam->FieldOfView;
+			StartCam->bConstrainAspectRatio = false; // 레터박스 제거 (전체화면)
+		}
+
+		// 2) 도착지(BattleCamera)의 목표 FOV 가져오기
+		UCameraComponent* BattleCamComp = GridActorRef->FindComponentByClass<UCameraComponent>();
+		if (BattleCamComp)
+		{
+			TargetFOV = BattleCamComp->FieldOfView;
+		}
+
+		// 3) 위치 이동 시작 (엔진 기능: 위치/회전 블렌딩)
+		// IntroCamera -> GridActorRef(BattleCamera)로 CameraBlendTime 동안 이동
+		PC->SetViewTargetWithBlend(GridActorRef, CameraBlendTime, VTBlend_Cubic, 1.0f);
+
+		// 4) 줌 조절 타이머 시작 (우리가 만든 기능: 렌즈 조절)
+		CurrentBlendTimeCount = 0.0f;
+		GetWorld()->GetTimerManager().SetTimer(
+			FOVBlendTimerHandle,
+			this,
+			&ABattleManager::UpdateCameraFOV,
+			0.01f, // 0.01초마다 갱신 (부드럽게)
+			true
+		);
+
+		UUserWidget* StartWidget = CreateWidget<UUserWidget>(GetWorld(), BattleStartWidgetClass);
+		if (StartWidget)
+		{
+			StartWidget->AddToViewport(9999);
+			// *중요: 위젯 BP의 Construct에서 애니메이션 재생 후 
+			// OnAnimationFinished에서 매니저의 OnBattleStartAnimFinished()를 호출해야 함!
+		}
+	}
+	else
+	{
+		// 연출 조건이 안 맞으면 즉시 게임 시작
+		OnBattleStartAnimFinished();
+	}
+}
+
+void ABattleManager::UpdateCameraFOV()
+{
+	if (!IntroCameraActor) return;
+
+	// 1. 시간 누적
+	CurrentBlendTimeCount += 0.01f;
+
+	// 2. 진행률 (Alpha 0.0 ~ 1.0)
+	float Alpha = FMath::Clamp(CurrentBlendTimeCount / CameraBlendTime, 0.0f, 1.0f);
+
+	// 3. 부드러운 곡선 적용 (Ease In Out: 시작과 끝을 부드럽게)
+	float SmoothAlpha = FMath::InterpEaseInOut(0.0f, 1.0f, Alpha, 2.0f);
+
+	// 4. 현재 시간의 FOV 계산 (보간)
+	float NewFOV = FMath::Lerp(StartFOV, TargetFOV, SmoothAlpha);
+
+	// 5. 카메라에 적용 (SetFieldOfView가 자동으로 FocalLength를 조절해줌)
+	UCameraComponent* CamComp = IntroCameraActor->FindComponentByClass<UCameraComponent>();
+	if (CamComp)
+	{
+		CamComp->SetFieldOfView(NewFOV);
+	}
+
+	// 6. 시간이 다 되면 타이머 종료
+	if (Alpha >= 1.0f)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(FOVBlendTimerHandle);
+	}
+}
+
+void ABattleManager::StartActualBattle()
+{
+	// 적 스폰
+	SpawnCurrentRoundEnemies();
+
+	// 플레이어 턴 시작
 	if (PlayerRef)
 	{
 		CurrentState = EBattleState::PlayerTurn;
 		PlayerRef->StartAction();
 	}
+}
+
+// 위젯 애니메이션이 끝나면 호출됨 -> 진짜 게임 시작
+void ABattleManager::OnBattleStartAnimFinished()
+{
+	StartActualBattle();
 }
 
 void ABattleManager::SpawnCurrentRoundEnemies()
