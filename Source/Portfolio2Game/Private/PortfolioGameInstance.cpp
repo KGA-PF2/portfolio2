@@ -83,7 +83,7 @@ void UPortfolioGameInstance::ResetGameData()
 
 	// 2. 스테이지 흐름 초기화
 	CurrentStageIndex = 0;
-	DifficultyLevel = 0;
+	DifficultyLevel = 1;
 
 	// 3. 통계 초기화
 	TotalPlayTime = 0.0f;

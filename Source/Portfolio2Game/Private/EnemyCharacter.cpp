@@ -1,6 +1,9 @@
 ﻿#include "EnemyCharacter.h"
 #include "PlayerCharacter.h"
 #include "BattleManager.h"
+#include "PortfolioGameInstance.h"
+#include "AbilitySystemComponent.h" 
+#include "BaseAttributeSet.h"       
 #include "Components/Widget.h"
 #include "Components/CapsuleComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -28,6 +31,32 @@ AEnemyCharacter::AEnemyCharacter()
 void AEnemyCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+	// 2. 난이도에 따른 체력 보정 적용
+	if (UPortfolioGameInstance* GI = Cast<UPortfolioGameInstance>(GetGameInstance()))
+	{
+		int32 Difficulty = GI->DifficultyLevel;
+
+		// 난이도가 1보다 클 때만 적용 (공식: Base + (Diff - 1))
+		if (Difficulty > 1 && AbilitySystem && Attributes)
+		{
+			// 현재 설정된 기본 체력 가져오기
+			float BaseHP = Attributes->GetMaxHP();
+
+			// 요청하신 공식 적용: (난이도 - 1) 만큼 추가
+			float BonusHP = (float)(Difficulty - 1);
+			float NewMaxHP = BaseHP + BonusHP;
+
+			// GAS 속성 값 강제 변경 (Base Value 수정)
+			AbilitySystem->SetNumericAttributeBase(UBaseAttributeSet::GetMaxHPAttribute(), NewMaxHP);
+			AbilitySystem->SetNumericAttributeBase(UBaseAttributeSet::GetHPAttribute(), NewMaxHP); // 현재 체력도 회복
+
+			OnHealthChanged.Broadcast((int32)NewMaxHP, (int32)NewMaxHP);
+
+			UE_LOG(LogTemp, Warning, TEXT("[%s] HP Scaled by Difficulty %d: %.0f -> %.0f (+%.0f)"),
+				*GetName(), Difficulty, BaseHP, NewMaxHP, BonusHP);
+		}
+	}
 
 	//순서 숨김
 	HideActionOrder();
