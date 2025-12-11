@@ -192,6 +192,7 @@ TArray<FEnforceRewardInfo> AEnforceManager::GetRandomRewards()
             // 랜덤 뽑기 & ★목록에서 제거 (중복 방지)
             int32 RandIdx = FMath::RandRange(0, TempEnforce.Num() - 1);
             Info.EnforceData = TempEnforce[RandIdx];
+			TempEnforce.RemoveAt(RandIdx);
         }
         // [예외] 강화 카드도 다 떨어졌으면? -> 스킬에서 다시 시도
         else if (TempSkills.Num() > 0)
