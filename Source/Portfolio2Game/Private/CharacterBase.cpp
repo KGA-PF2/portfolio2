@@ -307,9 +307,11 @@ void ACharacterBase::OnHealthChanged_Wrapper(int32 CurrentHP, int32 MaxHP)
 	// 체력이 0 이하이고, 아직 사망 처리되지 않았다면 (bDead == false)
 	if (CurrentHP <= 0 && !bDead)
     {
+		UE_LOG(LogTemp, Error, TEXT(">>> Character Died! Checking Cast..."));
         // ★ Cast가 성공하면(= 플레이어라면) 내부 로직 실행, 아니면 무시
         if (Cast<APlayerCharacter>(this))
         {
+			UE_LOG(LogTemp, Error, TEXT(">>> Player Died! Calling OnDeath BP Event."));
             bDead = true;
             OnDeath(); // BP의 Event On Death 호출
         }
@@ -325,6 +327,31 @@ void ACharacterBase::OnHealthAttributeChanged(const FOnAttributeChangeData& Data
 
 	// 기존에 만들어둔 델리게이트 방송 -> GridISM의 UpdateTileHPBar가 호출됨
 	OnHealthChanged.Broadcast((int32)NewHealth, (int32)MaxHealth);
+
+	//if (BattleManagerRef && BattleManagerRef->GridActorRef)
+	//{
+	//	AGridISM* Grid = Cast<AGridISM>(BattleManagerRef->GridActorRef);
+	//	if (Grid)
+	//	{
+	//		// 죽으면 끄기, 살았으면 갱신
+	//		bool bShow = (NewHealth > 0);
+	//		Grid->UpdateTileHPBar(GridIndex, bShow, NewHealth, MaxHealth);
+	//	}
+	//}
+
+	// 체력이 0 이하이고, 아직 사망 처리되지 않았다면 (bDead == false)
+	if (NewHealth <= 0 && !bDead)
+	{
+		UE_LOG(LogTemp, Error, TEXT(">>> Character Died! Checking Cast..."));
+		// ★ Cast가 성공하면(= 플레이어라면) 내부 로직 실행, 아니면 무시
+		if (Cast<APlayerCharacter>(this))
+		{
+			UE_LOG(LogTemp, Error, TEXT(">>> Player Died! Calling OnDeath BP Event."));
+			bDead = true;
+			OnDeath(); // BP의 Event On Death 호출
+		}
+	}
+	//몬스터는 자체 Die()에서 처리
 }
 
 

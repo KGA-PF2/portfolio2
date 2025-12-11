@@ -194,9 +194,6 @@ void AGridISM::VisibleGrid_Implementation(FVector GridLocation, FVector GridSize
 		int32 X = FMath::RoundToInt(LocalPos.X / GridSizeX);
 		int32 Y = FMath::RoundToInt(LocalPos.Y / GridSizeY);
 
-		// [디버그 2] 계산된 좌표 확인
-		UE_LOG(LogTemp, Warning, TEXT("Hover Coord: (%d, %d)"), X, Y);
-
 		// 해당 칸에 있는 캐릭터 찾기
 		ACharacterBase* FoundChar = CachedBattleManager->GetCharacterAt(FIntPoint(X, Y));
 
