@@ -36,6 +36,18 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+	// 내부적으로 스폰과 턴 시작 처리할 함수
+	void StartActualBattle();
+
+	// ───────── [FOV 자연스러운 연결용] ─────────
+	FTimerHandle FOVBlendTimerHandle;
+	float CurrentBlendTimeCount = 0.0f;
+	float StartFOV = 90.0f;
+	float TargetFOV = 90.0f;
+
+	// 0.01초마다 호출되어 렌즈를 조절할 함수
+	void UpdateCameraFOV();
+
 public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Managers")
@@ -86,6 +98,23 @@ public:
 	// 강제 스테이지 클리어 (F12 디버그용 & 승리 시 호출)
 	UFUNCTION(BlueprintCallable)
 	void ForceStageClear();
+
+	// [연출] 레벨에 배치된 시네마틱 카메라 액터 (에디터에서 할당)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cinematic")
+	TObjectPtr<AActor> IntroCameraActor;
+
+	// [연출] 카메라 전환 시간
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cinematic")
+	float CameraBlendTime = 2.0f;
+
+	// [연출] '전투 시작' 텍스트 위젯 클래스 (WBP_BattleStart)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cinematic")
+	TSubclassOf<UUserWidget> BattleStartWidgetClass;
+
+	// [연출] 위젯 애니메이션이 끝나면 호출될 함수 (이때 스폰함)
+	UFUNCTION(BlueprintCallable)
+	void OnBattleStartAnimFinished();
+
 
 	// ──────────────────────────────
 	// 액터 참조
