@@ -59,7 +59,7 @@ public:
 
 	// 난이도 (루프 돌 때마다 증가)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GameFlow")
-	int32 DifficultyLevel = 0;
+	int32 DifficultyLevel = 1;
 
 
 	// ───────── 함수 ─────────

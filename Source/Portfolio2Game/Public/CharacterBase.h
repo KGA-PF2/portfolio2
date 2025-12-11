@@ -39,7 +39,7 @@ public:
 
 	// BP에서 설정 가능한 Z오프셋 (기본값 100)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn")
-	float SpawnZOffset = 100.f;
+	float SpawnZOffset = 70.f;
 
 protected:
 	virtual void BeginPlay() override;

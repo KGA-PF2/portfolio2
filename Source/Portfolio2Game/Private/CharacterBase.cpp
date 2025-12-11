@@ -380,12 +380,15 @@ void ACharacterBase::Tick(float DeltaTime)
 
 		// 2. 위치 보간 (Lerp)
 		FVector NewLoc = FMath::Lerp(VisualMoveStartLocation, VisualMoveDestination, Alpha);
+		NewLoc.Z = VisualMoveStartLocation.Z;
 		SetActorLocation(NewLoc);
 
 		// 3. [도착 판정]
 		if (Alpha >= 1.0f)
 		{
 			// A. 위치 확정 & 이동 플래그 끄기
+			FVector FinalLoc = VisualMoveDestination;
+			FinalLoc.Z = VisualMoveStartLocation.Z;
 			SetActorLocation(VisualMoveDestination);
 			bIsVisualMoving = false;
 
