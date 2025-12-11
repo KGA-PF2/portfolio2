@@ -304,20 +304,17 @@ void ACharacterBase::OnHealthChanged_Wrapper(int32 CurrentHP, int32 MaxHP)
 		}
 	}
 
-	// ==========================================================
-	// ★ [신규 로직] 사망 체크 및 OnDeath 호출 (최종 처리) ★
-	// ==========================================================
-
 	// 체력이 0 이하이고, 아직 사망 처리되지 않았다면 (bDead == false)
 	if (CurrentHP <= 0 && !bDead)
-	{
-		// 1. 중복 사망 처리 방지 플래그 설정
-		bDead = true;
-
-		// 2. BlueprintImplementableEvent 호출
-		// PlayerCharacter BP에서 Game Over 로직을 수행합니다.
-		OnDeath();
-	}
+    {
+        // ★ Cast가 성공하면(= 플레이어라면) 내부 로직 실행, 아니면 무시
+        if (Cast<APlayerCharacter>(this))
+        {
+            bDead = true;
+            OnDeath(); // BP의 Event On Death 호출
+        }
+    }
+	//몬스터는 자체 Die()에서 처리
 }
 
 void ACharacterBase::OnHealthAttributeChanged(const FOnAttributeChangeData& Data)
