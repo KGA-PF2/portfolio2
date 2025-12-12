@@ -58,7 +58,11 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 			if (Attributes)
 			{
 				Attributes->InitHealth(GI->SavedMaxHP);
-				Attributes->SetHealth_Internal(GI->SavedCurrentHP);
+				Attributes->SetHealth_Internal(GI->SavedCurrentHP);\
+
+				int32 CurrentHP = FMath::RoundToInt(GI->SavedCurrentHP);
+				int32 MaxHP = FMath::RoundToInt(GI->SavedMaxHP);
+				OnHealthChanged.Broadcast(CurrentHP, MaxHP);
 			}
 			OwnedSkills = GI->SavedSkills;
 
@@ -363,6 +367,11 @@ void APlayerCharacter::Input_ExecuteSkills()
 {
 	if (bInputLocked || !bCanAct) return; // 행동 불가시 무시
 	if (SkillQueueIndices.Num() == 0) return; // 큐가 비었으면 무시
+
+	if (GetWorld()->GetTimerManager().IsTimerActive(SkillQueueTimerHandle))
+	{
+		return;
+	}
 
 	bHasCommittedAction = true;
 	LockInputTemporarily(); // 입력 잠금.
