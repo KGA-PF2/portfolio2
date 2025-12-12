@@ -63,7 +63,7 @@ public:
     void InitializeFromBase()
     {
         if (!SkillInfo) return;
-        TotalCooldown = 1;
+        TotalCooldown = SkillInfo->BaseCooldown;
         CurrentCooldown = 0;
     }
 };

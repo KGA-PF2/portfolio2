@@ -8,6 +8,7 @@
 #include "PortfolioGameInstance.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
+#include "ContentStreaming.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include <Misc/OutputDeviceNull.h>
@@ -35,8 +36,13 @@ void ABattleManager::BeginPlay()
 			if (CurrentTransitionWidget)
 			{
 				CurrentTransitionWidget->AddToViewport(9999);
+				if (IStreamingManager::Get().IsTextureStreamingEnabled())
+				{
+					IStreamingManager::Get().StreamAllResources(10.0f);
+				}
+
 				FTimerHandle Handle;
-				GetWorld()->GetTimerManager().SetTimer(Handle, this, &ABattleManager::ExecuteUncover, 0.2f, false);
+				GetWorld()->GetTimerManager().SetTimer(Handle, this, &ABattleManager::ExecuteUncover, 1.2f, false);
 			}
 		}
 	}
@@ -115,6 +121,14 @@ void ABattleManager::BeginBattle()
 		UE_LOG(LogTemp, Error, TEXT("No Stage Data Selected! Check PossibleStages."));
 		return;
 	}
+
+	TotalEnemiesInStage = 0;
+	for (const FRoundDef& Round : CurrentStageData->Rounds)
+	{
+		// 각 라운드별 등장하는 적의 수를 모두 더함
+		TotalEnemiesInStage += Round.EnemiesToSpawn.Num();
+	}
+	MaxKillCount = TotalEnemiesInStage;
 
 	// 2. 초기화
 	CurrentRound = 1;
@@ -381,6 +395,7 @@ void ABattleManager::EndBattle(bool bPlayerVictory)
 	{
 		CurrentState = EBattleState::Defeat;
 		UE_LOG(LogTemp, Warning, TEXT("BATTLE DEFEAT"));
+		
 	}
 }
 
@@ -635,8 +650,19 @@ void ABattleManager::CheckBattleResult()
 		if (Enemy && !Enemy->bDead) AliveEnemies++;
 	}
 
-	if (PlayerRef && PlayerRef->bDead)
+	/*if (PlayerRef && PlayerRef->bDead)
 	{
 		EndBattle(false);
-	}
+	}*/
+}
+
+void ABattleManager::OnPlayerDeathFinished()
+{
+	EndBattle(false); // 이때 진짜 게임 오버 위젯을 띄움
+}
+
+int32 ABattleManager::GetRemainingEnemyCount() const
+{
+	// 음수 방지를 위해 Max 사용
+	return FMath::Max(0, TotalEnemiesInStage - CurrentKillCount);
 }
