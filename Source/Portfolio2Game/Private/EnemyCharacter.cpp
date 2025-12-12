@@ -721,11 +721,13 @@ void AEnemyCharacter::Die()
 	float DestroyDelay = (SectionLength > 0.0f) ? (SectionLength * 0.95f) : 1.0f;
 
 	FTimerHandle DeathTimer;
-	GetWorld()->GetTimerManager().SetTimer(DeathTimer, [this]()
-		{
-			this->SetActorHiddenInGame(true);
-			this->Destroy();
-		}, DestroyDelay, false);
+	GetWorld()->GetTimerManager().SetTimer(
+		DeathTimer,
+		this,
+		&AEnemyCharacter::FinishDying,
+		DestroyDelay,
+		false
+	);
 }
 
 // 타이머가 끝나면 호출됨
