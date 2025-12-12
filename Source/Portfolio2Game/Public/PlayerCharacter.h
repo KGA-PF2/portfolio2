@@ -80,6 +80,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnCooldownFinished OnCooldownFinished_BPEvent;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim")
+	TObjectPtr<UAnimMontage> DeathMontage;
+
+
 	// 모든 쿨타임 감소
 	UFUNCTION(BlueprintCallable)
 	void ReduceCooldowns();
@@ -227,6 +231,15 @@ public:
 	// [신규] UI(버튼)에서 호출할 게임 재개 함수
 	UFUNCTION(BlueprintCallable, Category = "GameFlow")
 	void ResumeGame();
+
+	// C++ 전용 사망 처리 함수
+	void Die();
+
+	// 타이머 종료 후 실행될 함수
+	void FinishDying();
+
+	// 스킬 큐 실행 중인지 확인하는 플래그
+	bool bIsSkillQueueRunning = false;
 
 protected:
 	// [신규] ESC 키 (일시정지)

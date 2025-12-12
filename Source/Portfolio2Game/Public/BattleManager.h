@@ -157,6 +157,9 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void EndCharacterTurn(ACharacterBase* Character);
 
+	UFUNCTION(BlueprintCallable)
+	void OnPlayerDeathFinished();
+
 	// ───────── 스테이지 설정 (에디터 할당) ─────────
 	// 이 맵에서 나올 수 있는 스테이지 후보들
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage Setup")

@@ -635,8 +635,13 @@ void ABattleManager::CheckBattleResult()
 		if (Enemy && !Enemy->bDead) AliveEnemies++;
 	}
 
-	if (PlayerRef && PlayerRef->bDead)
+	/*if (PlayerRef && PlayerRef->bDead)
 	{
 		EndBattle(false);
-	}
+	}*/
+}
+
+void ABattleManager::OnPlayerDeathFinished()
+{
+	EndBattle(false); // 이때 진짜 게임 오버 위젯을 띄움
 }
