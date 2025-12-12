@@ -611,46 +611,62 @@ void APlayerCharacter::ResumeGame()
 
 void APlayerCharacter::Die()
 {
-	if (bDead) return;
-	bDead = true;
 
-	// 1. 입력 막기
+	// 2. 입력 차단
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		DisableInput(PC);
 	}
 
-	// 2. 사망 몽타주 재생
-	float Duration = 2.0f; // 기본 대기 시간
-	if (DeathMontage)
+	if (StateMontage)
 	{
-		Duration = PlayAnimMontage(DeathMontage);
-
-		// 몽타주 길이가 너무 짧으면 최소 1초는 보장
-		if (Duration < 1.0f) Duration = 1.0f;
+		UE_LOG(LogTemp, Warning, TEXT("Die() 호출됨! 몽타주 있음: %s"), *StateMontage->GetName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Die() 호출됨! 하지만 StateMontage가 비어있음(Null)! BP를 확인하세요."));
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("Player Died! Waiting %.2f seconds..."), Duration);
+	float DeathDuration = 2.0f; // 몽타주 없을 때를 대비한 기본값
 
-	// 3. 타이머 설정 (애니메이션 길이만큼 대기)
+	// 3. StateMontage의 'Death' 섹션 재생
+	if (StateMontage && GetMesh()->GetAnimInstance())
+	{
+		UAnimInstance* AnimInst = GetMesh()->GetAnimInstance();
+
+		// 몽타주 재생 시작
+		AnimInst->Montage_Play(StateMontage);
+
+		// 'Death' 섹션으로 즉시 이동
+		AnimInst->Montage_JumpToSection(FName("Death"), StateMontage);
+
+		// ★ [핵심] 'Death' 섹션이 끝나면 다음으로 넘어가지 말고 멈추게 설정
+		AnimInst->Montage_SetNextSection(FName("Death"), FName("None"), StateMontage);
+
+		// ★ [핵심] 'Death' 섹션의 정확한 길이 계산
+		int32 SectionIndex = StateMontage->GetSectionIndex(FName("Death"));
+		if (SectionIndex != INDEX_NONE)
+		{
+			DeathDuration = StateMontage->GetSectionLength(SectionIndex);
+			DeathDuration -= 0.3f;
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Player Died! Playing 'Death' Section. Duration: %.2f"), DeathDuration);
+
+	// 4. 애니메이션 길이만큼 기다린 후 FinishDying 호출 (타이머)
 	FTimerHandle DeathTimer;
 	GetWorld()->GetTimerManager().SetTimer(
 		DeathTimer,
 		this,
 		&APlayerCharacter::FinishDying,
-		Duration,
+		DeathDuration,
 		false
 	);
 
-	// (선택) BP의 OnDeath 이벤트도 호출하고 싶다면 여기서 호출
-	OnDeath();
 }
 
 void APlayerCharacter::FinishDying()
 {
-	// 배틀 매니저에게 "나 끝났어, 게임 오버 띄워" 라고 요청
-	if (BattleManagerRef)
-	{
-		BattleManagerRef->OnPlayerDeathFinished();
-	}
+	OnDeath();
 }

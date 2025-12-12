@@ -81,7 +81,7 @@ public:
 	FOnCooldownFinished OnCooldownFinished_BPEvent;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Anim")
-	TObjectPtr<UAnimMontage> DeathMontage;
+    TObjectPtr<UAnimMontage> StateMontage;
 
 
 	// 모든 쿨타임 감소

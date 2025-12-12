@@ -1,6 +1,4 @@
-﻿// BattleManager.h (최종 수정본)
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
@@ -71,6 +69,15 @@ public:
 	int32 TurnsSinceSingleEnemy = 0;
 
 	UUserWidget* CurrentTransitionWidget; // 임시 저장용
+
+	// [신규] 이번 스테이지의 총 적 숫자 (BeginBattle에서 자동 계산됨)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Battle|State")
+	int32 TotalEnemiesInStage = 0;
+
+	// [신규] 남은 적 수를 반환하는 함수 (UI 바인딩용)
+	// 공식: TotalEnemiesInStage - CurrentKillCount
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Battle|UI")
+	int32 GetRemainingEnemyCount() const;
 
 	// 이 맵에서 잡아야 할 총 적의 수 (기본 4)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle|Rules")
