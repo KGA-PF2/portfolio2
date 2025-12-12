@@ -182,6 +182,7 @@ void APlayerCharacter::SetInputEnabled(bool bEnabled)
 // (기존) 입력 래퍼 함수 구현 
 void APlayerCharacter::Input_MoveUp()
 {
+	if (bIsSkillQueueRunning) return;
 	if (!bCanAct || bInputLocked || bHasCommittedAction) return;
 	if (AbilitySystem)
 	{
@@ -193,6 +194,7 @@ void APlayerCharacter::Input_MoveUp()
 
 void APlayerCharacter::Input_MoveDown()
 {
+	if (bIsSkillQueueRunning) return;
 	if (!bCanAct || bInputLocked || bHasCommittedAction) return;	if (AbilitySystem)
 	{
 		bHasCommittedAction = true;
@@ -203,6 +205,7 @@ void APlayerCharacter::Input_MoveDown()
 
 void APlayerCharacter::Input_MoveLeft()
 {
+	if (bIsSkillQueueRunning) return;
 	if (!bCanAct || bInputLocked || bHasCommittedAction) return;	if (AbilitySystem)
 	{
 		bHasCommittedAction = true;
@@ -213,6 +216,7 @@ void APlayerCharacter::Input_MoveLeft()
 
 void APlayerCharacter::Input_MoveRight()
 {
+	if (bIsSkillQueueRunning) return;
 	if (!bCanAct || bInputLocked || bHasCommittedAction) return;	if (AbilitySystem)
 	{
 		bHasCommittedAction = true;
@@ -297,6 +301,10 @@ void APlayerCharacter::UnlockInput()
 void APlayerCharacter::SelectSkill(int32 SkillIndex)
 {
 	if (!bCanAct || bInputLocked) return;
+	if (BattleManagerRef && BattleManagerRef->CurrentState != EBattleState::PlayerTurn)
+	{
+		return;
+	}
 	if (SkillQueueIndices.Num() >= 3) return; // 최대 3개
 
 	// (★수정★) 인덱스 유효성 검사
@@ -365,6 +373,7 @@ void APlayerCharacter::ApplySkillCooldown(int32 SkillIndex)
 
 void APlayerCharacter::Input_ExecuteSkills()
 {
+	if (bIsSkillQueueRunning) return;
 	if (bInputLocked || !bCanAct) return; // 행동 불가시 무시
 	if (SkillQueueIndices.Num() == 0) return; // 큐가 비었으면 무시
 
@@ -372,6 +381,8 @@ void APlayerCharacter::Input_ExecuteSkills()
 	{
 		return;
 	}
+
+	bIsSkillQueueRunning = true;
 
 	bHasCommittedAction = true;
 	LockInputTemporarily(); // 입력 잠금.
@@ -383,6 +394,7 @@ void APlayerCharacter::Input_ExecuteSkills()
 
 void APlayerCharacter::Input_CancelSkills()
 {
+	if (bIsSkillQueueRunning) return;
 	if (bInputLocked || !bCanAct) return;
 	if (SkillQueueIndices.Num() == 0) return;
 
@@ -404,6 +416,8 @@ void APlayerCharacter::ExecuteNextSkillInQueue_UI()
 		UE_LOG(LogTemp, Warning, TEXT("=== 스킬 큐 실행 완료 ==="));
 		GetWorld()->GetTimerManager().ClearTimer(SkillQueueTimerHandle);
 		OnSkillQueueCleared_BPEvent.Broadcast(); // UI 큐 비우기 신호
+
+		bIsSkillQueueRunning = false;
 		EndAction(); // 턴 종료
 		return;
 	}
@@ -593,4 +607,66 @@ void APlayerCharacter::ResumeGame()
 
 		PC->SetInputMode(InputMode);
 	}
+}
+
+void APlayerCharacter::Die()
+{
+
+	// 2. 입력 차단
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		DisableInput(PC);
+	}
+
+	if (StateMontage)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Die() 호출됨! 몽타주 있음: %s"), *StateMontage->GetName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Die() 호출됨! 하지만 StateMontage가 비어있음(Null)! BP를 확인하세요."));
+	}
+
+	float DeathDuration = 2.0f; // 몽타주 없을 때를 대비한 기본값
+
+	// 3. StateMontage의 'Death' 섹션 재생
+	if (StateMontage && GetMesh()->GetAnimInstance())
+	{
+		UAnimInstance* AnimInst = GetMesh()->GetAnimInstance();
+
+		// 몽타주 재생 시작
+		AnimInst->Montage_Play(StateMontage);
+
+		// 'Death' 섹션으로 즉시 이동
+		AnimInst->Montage_JumpToSection(FName("Death"), StateMontage);
+
+		// ★ [핵심] 'Death' 섹션이 끝나면 다음으로 넘어가지 말고 멈추게 설정
+		AnimInst->Montage_SetNextSection(FName("Death"), FName("None"), StateMontage);
+
+		// ★ [핵심] 'Death' 섹션의 정확한 길이 계산
+		int32 SectionIndex = StateMontage->GetSectionIndex(FName("Death"));
+		if (SectionIndex != INDEX_NONE)
+		{
+			DeathDuration = StateMontage->GetSectionLength(SectionIndex);
+			DeathDuration -= 0.3f;
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Player Died! Playing 'Death' Section. Duration: %.2f"), DeathDuration);
+
+	// 4. 애니메이션 길이만큼 기다린 후 FinishDying 호출 (타이머)
+	FTimerHandle DeathTimer;
+	GetWorld()->GetTimerManager().SetTimer(
+		DeathTimer,
+		this,
+		&APlayerCharacter::FinishDying,
+		DeathDuration,
+		false
+	);
+
+}
+
+void APlayerCharacter::FinishDying()
+{
+	OnDeath();
 }

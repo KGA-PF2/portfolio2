@@ -309,11 +309,11 @@ void ACharacterBase::OnHealthChanged_Wrapper(int32 CurrentHP, int32 MaxHP)
     {
 		UE_LOG(LogTemp, Error, TEXT(">>> Character Died! Checking Cast..."));
         // ★ Cast가 성공하면(= 플레이어라면) 내부 로직 실행, 아니면 무시
-        if (Cast<APlayerCharacter>(this))
+        if (APlayerCharacter* Player = Cast<APlayerCharacter>(this))
         {
 			UE_LOG(LogTemp, Error, TEXT(">>> Player Died! Calling OnDeath BP Event."));
             bDead = true;
-            OnDeath(); // BP의 Event On Death 호출
+			Player->Die(); // BP의 Event On Death 호출
         }
     }
 	//몬스터는 자체 Die()에서 처리
